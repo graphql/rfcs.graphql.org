@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "target": "ES2023",
+    "outDir": "build",
+    "rootDir": ".",
+    "noEmitOnError": true,
+    "lib": ["ES2023", "DOM"]
+  }
+}
