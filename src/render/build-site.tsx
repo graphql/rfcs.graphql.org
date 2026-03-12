@@ -69,13 +69,13 @@ async function main(): Promise<void> {
   });
 
   await writePage(
-    path.join(DIST_DIR, "all", "index.html"),
+    path.join(DIST_DIR, "rfcs", "index.html"),
     <AllRfcsPage data={data} />,
     {
       title: "All GraphQL RFCs",
       description:
         "Complete listing of tracked GraphQL RFCs across all stages.",
-      pathname: "/all/",
+      pathname: "/rfcs/",
     },
   );
 
@@ -151,7 +151,7 @@ function Layout(props: {
               <span className="brand-copy">RFC Tracker</span>
             </a>
             <nav className="site-nav">
-              <a href="/all/">All RFCs</a>
+              <a href="/rfcs/">All RFCs</a>
               <a href="/activity/">Activity</a>
               <a href="https://github.com/graphql/graphql-spec">graphql-spec</a>
               <a href="https://github.com/graphql/graphql-wg">graphql-wg</a>
@@ -312,7 +312,7 @@ function AllRfcsPage({ data }: { data: SiteData }) {
     <Layout
       title="All GraphQL RFCs"
       description="Complete listing of tracked GraphQL RFCs across all stages."
-      pathname="/all/"
+      pathname="/rfcs/"
     >
       <section className="hero hero-compact">
         <p className="eyebrow">Complete index</p>
