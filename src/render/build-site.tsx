@@ -91,7 +91,7 @@ function Layout(props: {
         <title>{props.title}</title>
         <meta name="description" content={props.description} />
         <link rel="canonical" href={canonicalUrl} />
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="stylesheet" href="/styles.css" />
       </head>
       <body>
