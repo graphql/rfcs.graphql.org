@@ -7,9 +7,6 @@
     "outDir": "build",
     "rootDir": ".",
     "noEmitOnError": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "lib": ["ES2023", "DOM"],
-    "rewriteRelativeImportExtensions": true
+    "lib": ["ES2023", "DOM"]
   }
 }
