@@ -157,7 +157,7 @@ function Layout(props: {
 }
 
 function HomePage({ data }: { data: SiteData }) {
-  const openRfcs = data.rfcs.filter((rfc) => !rfc.mergedAt);
+  const openRfcs = data.rfcs.filter((rfc) => !rfc.mergedAt && !rfc.closedAt);
 
   return (
     <Layout
