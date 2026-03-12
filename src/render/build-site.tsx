@@ -73,7 +73,8 @@ async function main(): Promise<void> {
     <AllRfcsPage data={data} />,
     {
       title: "All GraphQL RFCs",
-      description: "Complete listing of tracked GraphQL RFCs across all stages.",
+      description:
+        "Complete listing of tracked GraphQL RFCs across all stages.",
       pathname: "/all/",
     },
   );
@@ -300,7 +301,8 @@ function AllRfcsPage({ data }: { data: SiteData }) {
         <p className="eyebrow">Complete index</p>
         <h1>All RFCs</h1>
         <p className="lede">
-          Full tracker view including open, merged, rejected, and superseded RFCs.
+          Full tracker view including open, merged, rejected, and superseded
+          RFCs.
         </p>
       </section>
 
@@ -327,12 +329,16 @@ function AllRfcsPage({ data }: { data: SiteData }) {
                     <a href={`/rfcs/${rfc.identifier}/`}>
                       {formatIdentifier(rfc.identifier)}
                     </a>
-                    {rfc.nextStage ? <span className="badge">Next stage</span> : null}
+                    {rfc.nextStage ? (
+                      <span className="badge">Next stage</span>
+                    ) : null}
                   </td>
                   <td>{stageLabel(rfc.stage)}</td>
                   <td>
                     {rfc.champion ? (
-                      <a href={`https://github.com/${rfc.champion}`}>@{rfc.champion}</a>
+                      <a href={`https://github.com/${rfc.champion}`}>
+                        @{rfc.champion}
+                      </a>
                     ) : (
                       "-"
                     )}
@@ -420,7 +426,7 @@ function RfcPage(props: { frontmatter: RfcFrontmatter; body: string }) {
         </aside>
 
         <article className="markdown-body">
-          <Markdown content={body} />
+          <Markdown content={stripLeadingTitle(body)} />
         </article>
       </section>
     </Layout>
@@ -470,6 +476,10 @@ function normalizeHref(href: string | undefined): string | undefined {
     return `${href}/`;
   }
   return href;
+}
+
+function stripLeadingTitle(content: string): string {
+  return content.replace(/^# [^\n]+\n+/m, "");
 }
 
 function eventSentence(event: Event): string {
