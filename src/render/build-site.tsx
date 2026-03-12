@@ -253,6 +253,8 @@ function HomePage({ data }: { data: SiteData }) {
 }
 
 function ActivityPage({ data }: { data: SiteData }) {
+  const activityGroups = groupActivityByMonthAndDay(data.activity);
+
   return (
     <Layout
       title="GraphQL RFC Activity"
@@ -268,23 +270,41 @@ function ActivityPage({ data }: { data: SiteData }) {
         </p>
       </section>
       <section className="section-block">
-        <ol className="activity-list">
-          {data.activity.map((entry, index) => (
-            <li
-              key={`${entry.identifier}:${entry.event.type}:${entry.event.date}:${index}`}
-            >
-              <article className="activity-card">
-                <div className="activity-card-top">
-                  <a href={`/rfcs/${entry.identifier}/`}>
-                    {formatIdentifier(entry.identifier)} {entry.title}
-                  </a>
-                  <span>{stageLabel(entry.stage)}</span>
+        <div className="activity-groups">
+          {activityGroups.map((month) => (
+            <section className="activity-month" key={month.label}>
+              <div className="activity-month-divider">-- {month.label} --</div>
+              {month.days.map((day) => (
+                <div className="activity-day" key={day.date}>
+                  <div className="activity-day-heading">{day.date}</div>
+                  <ol className="activity-list">
+                    {day.rfcs.map((rfc) => (
+                      <li key={`${day.date}:${rfc.identifier}`}>
+                        <article className="activity-card">
+                          <div className="activity-card-top">
+                            <a href={`/rfcs/${rfc.identifier}/`}>
+                              {formatIdentifier(rfc.identifier)} {rfc.title}
+                            </a>
+                            <span>{stageLabel(rfc.stage)}</span>
+                          </div>
+                          <ul className="activity-events">
+                            {rfc.events.map((event, index) => (
+                              <li
+                                key={`${rfc.identifier}:${event.type}:${event.date}:${index}`}
+                              >
+                                {eventSentence(event)}
+                              </li>
+                            ))}
+                          </ul>
+                        </article>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
-                <p>{eventSentence(entry.event)}</p>
-              </article>
-            </li>
+              ))}
+            </section>
           ))}
-        </ol>
+        </div>
       </section>
     </Layout>
   );
@@ -487,6 +507,65 @@ function eventSentence(event: Event): string {
     return `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"} pushed on ${formatDate(event.date)}.`;
   }
   return `${summarizeEvent(event)}.`;
+}
+
+function groupActivityByMonthAndDay(activity: ActivityEntry[]) {
+  const months = new Map<
+    string,
+    Map<
+      string,
+      Map<
+        string,
+        {
+          identifier: string;
+          title: string;
+          stage: ActivityEntry["stage"];
+          events: Event[];
+        }
+      >
+    >
+  >();
+
+  for (const entry of activity) {
+    const date = formatDate(entry.event.date);
+    const monthLabel = formatMonthLabel(date);
+    const month = months.get(monthLabel) ?? new Map();
+    months.set(monthLabel, month);
+
+    const day = month.get(date) ?? new Map();
+    month.set(date, day);
+
+    const rfc = day.get(entry.identifier) ?? {
+      identifier: entry.identifier,
+      title: entry.title,
+      stage: entry.stage,
+      events: [],
+    };
+    rfc.events.push(entry.event);
+    day.set(entry.identifier, rfc);
+  }
+
+  return [...months.entries()].map(([label, days]) => ({
+    label,
+    days: [...days.entries()].map(([date, rfcs]) => ({
+      date,
+      rfcs: [...rfcs.values()].sort((left, right) =>
+        left.identifier.localeCompare(right.identifier),
+      ),
+    })),
+  }));
+}
+
+function formatMonthLabel(date: string): string {
+  const [year, month] = date.split("-");
+  const label = new Date(`${year}-${month}-01T00:00:00Z`).toLocaleString(
+    "en-GB",
+    {
+      month: "long",
+      timeZone: "UTC",
+    },
+  );
+  return `${label} ${year}`;
 }
 
 async function writePage(

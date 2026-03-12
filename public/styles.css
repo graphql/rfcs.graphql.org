@@ -246,6 +246,7 @@ h2 {
 .activity-list {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 
 .activity-card {
@@ -257,8 +258,40 @@ h2 {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
   font-weight: 700;
+}
+
+.activity-month + .activity-month {
+  margin-top: 2rem;
+}
+
+.activity-month-divider {
+  margin-bottom: 1rem;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.activity-day + .activity-day {
+  margin-top: 1.25rem;
+}
+
+.activity-day-heading {
+  margin-bottom: 0.8rem;
+  font-size: 0.92rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.activity-events {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.activity-events li + li {
+  margin-top: 0.35rem;
 }
 
 .markdown-body > *:first-child {
