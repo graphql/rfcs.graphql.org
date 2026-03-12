@@ -109,7 +109,7 @@ query GetWgDiscussions($after: String) {
         first: 100
         after: $after
         orderBy: { field: UPDATED_AT, direction: DESC }
-        categoryId: "DIC_kwDOBervg84B_uIH"
+        categoryId: "DIC_kwDOBervg84B_uIH" # "Ideas"
       ) {
         pageInfo {
           hasNextPage
