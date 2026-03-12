@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500&display=swap");
 
 :root {
   --bg: #f5f1e8;
@@ -7,9 +7,18 @@
   --line: rgba(20, 24, 33, 0.12);
   --ink: #141821;
   --muted: #5e5a54;
-  --accent: #ca3c25;
-  --accent-2: #0b6e4f;
+  --accent-rgb: #e10098;
+  --accent: var(--accent-rgb);
+  --accent-soft: rgba(225, 0, 152, 0.12);
+  --accent-line: rgba(225, 0, 152, 0.28);
+  --accent-2: #6d6670;
   --shadow: 0 18px 60px rgba(20, 24, 33, 0.08);
+}
+
+@supports (color: color(display-p3 1 0 0)) {
+  :root {
+    --accent: color(display-p3 0.8824 0 0.5961);
+  }
 }
 
 * {
@@ -18,14 +27,10 @@
 
 html {
   background:
-    radial-gradient(
-      circle at top left,
-      rgba(202, 60, 37, 0.12),
-      transparent 26rem
-    ),
+    radial-gradient(circle at top left, rgba(225, 0, 152, 0.08), transparent 24rem),
     radial-gradient(
       circle at top right,
-      rgba(11, 110, 79, 0.14),
+      rgba(20, 24, 33, 0.05),
       transparent 28rem
     ),
     var(--bg);
@@ -40,7 +45,7 @@ body {
 
 a {
   color: inherit;
-  text-decoration-color: rgba(202, 60, 37, 0.45);
+  text-decoration-color: var(--accent-line);
   text-underline-offset: 0.16em;
 }
 
@@ -91,12 +96,13 @@ pre {
   background: var(--ink);
   color: white;
   font-size: 0.78rem;
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
+  font-weight: 300;
 }
 
 .brand-copy {
   font-size: 1.1rem;
-  font-weight: 700;
+  font-weight: 300;
 }
 
 .site-nav {
@@ -125,14 +131,14 @@ pre {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 h1,
 h2,
 h3 {
   font-family: "Rubik", "Avenir Next", "Segoe UI", sans-serif;
-  font-weight: 800;
+  font-weight: 300;
   line-height: 1.05;
 }
 
@@ -161,7 +167,7 @@ h2 {
 
 .hero-meta > div {
   padding: 1rem;
-  border-left: 4px solid var(--accent-2);
+  border-left: 4px solid var(--accent-line);
   background: rgba(255, 255, 255, 0.52);
 }
 
@@ -214,7 +220,7 @@ h2 {
   margin-left: 0.55rem;
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
-  background: rgba(202, 60, 37, 0.12);
+  background: var(--accent-soft);
   color: var(--accent);
   font-size: 0.75rem;
 }
@@ -287,7 +293,7 @@ h2 {
 .activity-month-divider span {
   font-family: "Rubik", "Avenir Next", "Segoe UI", sans-serif;
   font-size: clamp(1.4rem, 3vw, 2rem);
-  font-weight: 800;
+  font-weight: 300;
   color: var(--accent);
 }
 
