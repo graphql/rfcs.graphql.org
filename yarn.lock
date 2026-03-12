@@ -50,6 +50,16 @@
   dependencies:
     "@octokit/openapi-types" "^27.0.0"
 
+"@tsconfig/node-ts@23.6.4":
+  version "23.6.4"
+  resolved "https://registry.yarnpkg.com/@tsconfig/node-ts/-/node-ts-23.6.4.tgz#40eeb4cc6bb70b6b8bec675a9307e4516af8e321"
+  integrity sha512-37BMJvNQZ+vTgd1xG2TGBkJ6ENeT4eO4Wh2CHrnn0IwH7ybLFCzh4Uc//kc7UIvqiRac4uGdIc1meKOjMSlKzw==
+
+"@tsconfig/node24@24.0.4":
+  version "24.0.4"
+  resolved "https://registry.yarnpkg.com/@tsconfig/node24/-/node24-24.0.4.tgz#ae50cc6b3288c1010454f0ec4659b47b520ca1b1"
+  integrity sha512-2A933l5P5oCbv6qSxHs7ckKwobs8BDAe9SJ/Xr2Hy+nDlwmLE1GhFh/g/vXGRZWgxBg9nX/5piDtHR9Dkw/XuA==
+
 "@types/debug@^4.0.0":
   version "4.1.12"
   resolved "https://registry.yarnpkg.com/@types/debug/-/debug-4.1.12.tgz#a155f21690871953410df4b6b6f53187f0500917"

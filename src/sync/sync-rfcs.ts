@@ -17,7 +17,7 @@ import {
   stageWeight,
   summarizeEvent,
   tidyTitle,
-} from "../lib/format.js";
+} from "../lib/format.ts";
 import type {
   ActivityEntry,
   CommitsPushedEvent,
@@ -26,7 +26,7 @@ import type {
   RfcSummary,
   SiteData,
   Stage,
-} from "../lib/types.js";
+} from "../lib/types.ts";
 
 const execFile = promisify(execFileCallback);
 const ROOT = process.cwd();

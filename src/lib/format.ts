@@ -5,7 +5,7 @@ import type {
   RfcSummary,
   Stage,
   TimelineCommit,
-} from "./types.js";
+} from "./types.ts";
 
 export function tidyTitle(title: string): string {
   return title

@@ -4,11 +4,11 @@
   "type": "module",
   "scripts": {
     "clean": "rm -rf build dist",
-    "compile": "tsc -p tsconfig.json",
-    "sync-rfcs": "yarn compile && node build/src/sync/sync-rfcs.js",
+    "compile": "tsc -p tsconfig.build.json",
+    "sync-rfcs": "node src/sync/sync-rfcs.ts",
     "build-site": "yarn compile && node build/src/render/build-site.js",
-    "build": "yarn compile && node build/src/sync/sync-rfcs.js && node build/src/render/build-site.js",
-    "typecheck": "tsc --noEmit"
+    "build": "node src/sync/sync-rfcs.ts && yarn compile && node build/src/render/build-site.js",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
     "@octokit/graphql": "9.0.3",
@@ -21,6 +21,8 @@
     "yaml": "2.8.2"
   },
   "devDependencies": {
+    "@tsconfig/node-ts": "23.6.4",
+    "@tsconfig/node24": "24.0.4",
     "@types/node": "25.4.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",

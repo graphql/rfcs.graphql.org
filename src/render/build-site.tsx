@@ -10,8 +10,8 @@ import {
   formatIdentifier,
   stageLabel,
   summarizeEvent,
-} from "../lib/format.js";
-import type { ActivityEntry, Event, RfcFrontmatter, SiteData } from "../lib/types.js";
+} from "../lib/format.ts";
+import type { ActivityEntry, Event, RfcFrontmatter, SiteData } from "../lib/types.ts";
 
 const ROOT = process.cwd();
 const GENERATED_DIR = path.join(ROOT, "generated");
