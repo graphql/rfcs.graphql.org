@@ -1,6 +1,16 @@
 # rfcs.graphql.org
 
-Static GraphQL RFC publishing pipeline.
+RFC tracker for GraphQL. Gathers together RFCs from:
+
+- graphql-spec issues
+- graphql-spec PRs
+- graphql-wg rfcs/ folder
+
+Tracks commits, commentary, and stages. Interlinks based on heuristics. Also
+fetches details of GraphQL Spec WG meetings to determine when each RFC has been
+discussed, to allow looking up discussions in the recordings.
+
+## Repo setup
 
 This repo does two separate jobs:
 
@@ -9,16 +19,18 @@ This repo does two separate jobs:
    `graphql/graphql-wg`, then writes plain markdown and JSON into `generated/`.
 
 2. `yarn build-site`
-   Reads only the generated markdown and JSON, renders it through a trusted
-   markdown pipeline, and emits static HTML into `dist/`.
+   Reads only the generated markdown and JSON, renders it through a markdown
+   pipeline, and emits static HTML into `dist/`.
 
-There is no MDX in the pipeline and no execution of content-provided code.
-Untrusted GitHub-flavoured markdown is treated as data throughout.
+Since we're pulling markdown from easy-to-edit issues and PRs, we must treat it
+as entirely untrusted. We treat this untrusted GitHub-flavoured markdown as data
+throughout, and explicitly forbid the use of MDX and similar technologies in
+this repository.
 
 ## Requirements
 
 - Node 24+
-- Yarn 1.x
+- Yarn
 - `git`
 - `GITHUB_TOKEN`
 
@@ -42,7 +54,5 @@ Untrusted GitHub-flavoured markdown is treated as data throughout.
 ## Deployment
 
 GitHub Pages deployment is configured in
-[`deploy.yml`](/home/benjaie/Dev/graphql/rfcs.graphql.org/.github/workflows/deploy.yml).
-It runs daily on cron, on manual dispatch, and on pushes to `main`.
-
-For Vercel or any other static host, the build output is simply `dist/`.
+[`deploy.yml`](.github/workflows/deploy.yml). It runs daily on cron, on manual
+dispatch, and on pushes to `main`.
