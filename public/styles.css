@@ -297,6 +297,15 @@ h2 {
   margin-top: 0.35rem;
 }
 
+.activity-event-commits {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.activity-event-commits li + li {
+  margin-top: 0.2rem;
+}
+
 .markdown-body > *:first-child {
   margin-top: 0;
 }

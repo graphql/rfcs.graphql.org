@@ -291,7 +291,7 @@ function ActivityPage({ data }: { data: SiteData }) {
                           <li
                             key={`${rfc.identifier}:${event.type}:${event.date}:${index}`}
                           >
-                            {eventSentence(event)}
+                            {renderActivityEvent(event)}
                           </li>
                         ))}
                       </ul>
@@ -504,6 +504,80 @@ function eventSentence(event: Event): string {
     return `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"} pushed on ${formatDate(event.date)}.`;
   }
   return `${summarizeEvent(event)}.`;
+}
+
+function renderActivityEvent(event: Event): React.ReactNode {
+  if (event.type === "commitsPushed") {
+    if (event.commits.length === 1) {
+      const commit = event.commits[0];
+      return (
+        <>
+          <a href={commit.href}>{commit.headline}</a> on {formatDate(event.date)} by{" "}
+          {commit.ghUser ? `@${commit.ghUser}` : commit.authorName ?? "unknown"}
+        </>
+      );
+    }
+
+    return (
+      <>
+        <a href={event.href}>
+          {event.commits.length} commits pushed
+        </a>{" "}
+        on {formatDate(event.date)}
+        <ul className="activity-event-commits">
+          {event.commits.map((commit) => (
+            <li key={commit.href}>
+              <a href={commit.href}>{commit.headline}</a> by{" "}
+              {commit.ghUser ? `@${commit.ghUser}` : commit.authorName ?? "unknown"}
+            </li>
+          ))}
+        </ul>
+      </>
+    );
+  }
+
+  switch (event.type) {
+    case "prCreated":
+      return (
+        <>
+          <a href={event.href}>Spec PR created</a> on {formatDate(event.date)} by{" "}
+          {event.actor ?? "unknown"}
+        </>
+      );
+    case "docCreated":
+      return (
+        <>
+          <a href={event.href}>RFC document created</a> on {formatDate(event.date)} by{" "}
+          {event.actor ?? "unknown"}
+        </>
+      );
+    case "docUpdated":
+      return (
+        <>
+          <a href={event.href}>RFC document updated</a> on {formatDate(event.date)} by{" "}
+          {event.actor ?? "unknown"}
+        </>
+      );
+    case "wgDiscussionCreated":
+      return (
+        <>
+          <a href={event.href}>WG discussion created</a> on {formatDate(event.date)} by{" "}
+          {event.actor ?? "unknown"}
+        </>
+      );
+    case "wgAgenda":
+      return (
+        <>
+          Added to <a href={event.href}>WG agenda</a> on {formatDate(event.date)}
+        </>
+      );
+    case "wgNotes":
+      return (
+        <>
+          Mentioned in <a href={event.href}>WG notes</a> on {formatDate(event.date)}
+        </>
+      );
+  }
 }
 
 function groupActivityByMonth(activity: ActivityEntry[]) {
