@@ -3,7 +3,6 @@
   "compilerOptions": {
     "noEmit": false,
     "target": "ES2023",
-    "jsx": "react-jsx",
     "outDir": "build",
     "rootDir": ".",
     "noEmitOnError": true,
