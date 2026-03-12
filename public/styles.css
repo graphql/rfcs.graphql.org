@@ -267,22 +267,25 @@ h2 {
 }
 
 .activity-month-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   margin-bottom: 1rem;
-  color: var(--muted);
+}
+
+.activity-month-divider::before,
+.activity-month-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1 1 auto;
+  background: var(--line);
+}
+
+.activity-month-divider span {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: clamp(1.4rem, 3vw, 2rem);
   font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.activity-day + .activity-day {
-  margin-top: 1.25rem;
-}
-
-.activity-day-heading {
-  margin-bottom: 0.8rem;
-  font-size: 0.92rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--accent);
 }
 
 .activity-events {

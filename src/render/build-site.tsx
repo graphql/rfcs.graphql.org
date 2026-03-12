@@ -253,7 +253,7 @@ function HomePage({ data }: { data: SiteData }) {
 }
 
 function ActivityPage({ data }: { data: SiteData }) {
-  const activityGroups = groupActivityByMonthAndDay(data.activity);
+  const activityGroups = groupActivityByMonth(data.activity);
 
   return (
     <Layout
@@ -273,35 +273,32 @@ function ActivityPage({ data }: { data: SiteData }) {
         <div className="activity-groups">
           {activityGroups.map((month) => (
             <section className="activity-month" key={month.label}>
-              <div className="activity-month-divider">-- {month.label} --</div>
-              {month.days.map((day) => (
-                <div className="activity-day" key={day.date}>
-                  <div className="activity-day-heading">{day.date}</div>
-                  <ol className="activity-list">
-                    {day.rfcs.map((rfc) => (
-                      <li key={`${day.date}:${rfc.identifier}`}>
-                        <article className="activity-card">
-                          <div className="activity-card-top">
-                            <a href={`/rfcs/${rfc.identifier}/`}>
-                              {formatIdentifier(rfc.identifier)} {rfc.title}
-                            </a>
-                            <span>{stageLabel(rfc.stage)}</span>
-                          </div>
-                          <ul className="activity-events">
-                            {rfc.events.map((event, index) => (
-                              <li
-                                key={`${rfc.identifier}:${event.type}:${event.date}:${index}`}
-                              >
-                                {eventSentence(event)}
-                              </li>
-                            ))}
-                          </ul>
-                        </article>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              ))}
+              <div className="activity-month-divider">
+                <span>{month.label}</span>
+              </div>
+              <ol className="activity-list">
+                {month.rfcs.map((rfc) => (
+                  <li key={`${month.label}:${rfc.identifier}`}>
+                    <article className="activity-card">
+                      <div className="activity-card-top">
+                        <a href={`/rfcs/${rfc.identifier}/`}>
+                          {formatIdentifier(rfc.identifier)} {rfc.title}
+                        </a>
+                        <span>{stageLabel(rfc.stage)}</span>
+                      </div>
+                      <ul className="activity-events">
+                        {rfc.events.map((event, index) => (
+                          <li
+                            key={`${rfc.identifier}:${event.type}:${event.date}:${index}`}
+                          >
+                            {eventSentence(event)}
+                          </li>
+                        ))}
+                      </ul>
+                    </article>
+                  </li>
+                ))}
+              </ol>
             </section>
           ))}
         </div>
@@ -509,50 +506,47 @@ function eventSentence(event: Event): string {
   return `${summarizeEvent(event)}.`;
 }
 
-function groupActivityByMonthAndDay(activity: ActivityEntry[]) {
+function groupActivityByMonth(activity: ActivityEntry[]) {
   const months = new Map<
     string,
     Map<
       string,
-      Map<
-        string,
-        {
-          identifier: string;
-          title: string;
-          stage: ActivityEntry["stage"];
-          events: Event[];
-        }
-      >
+      {
+        identifier: string;
+        title: string;
+        stage: ActivityEntry["stage"];
+        events: Event[];
+      }
     >
   >();
 
   for (const entry of activity) {
-    const date = formatDate(entry.event.date);
-    const monthLabel = formatMonthLabel(date);
+    const monthLabel = formatMonthLabel(formatDate(entry.event.date));
     const month = months.get(monthLabel) ?? new Map();
     months.set(monthLabel, month);
 
-    const day = month.get(date) ?? new Map();
-    month.set(date, day);
-
-    const rfc = day.get(entry.identifier) ?? {
+    const rfc = month.get(entry.identifier) ?? {
       identifier: entry.identifier,
       title: entry.title,
       stage: entry.stage,
       events: [],
     };
     rfc.events.push(entry.event);
-    day.set(entry.identifier, rfc);
+    month.set(entry.identifier, rfc);
   }
 
   return [...months.entries()].map(([label, days]) => ({
     label,
-    days: [...days.entries()].map(([date, rfcs]) => ({
-      date,
-      rfcs: [...rfcs.values()].sort((left, right) =>
+    rfcs: [...days.values()]
+      .map((rfc) => ({
+        ...rfc,
+        events: [...rfc.events].sort(
+          (left, right) => Date.parse(right.date) - Date.parse(left.date),
+        ),
+      }))
+      .sort((left, right) =>
         left.identifier.localeCompare(right.identifier),
       ),
-    })),
   }));
 }
 
