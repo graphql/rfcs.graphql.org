@@ -5,11 +5,7 @@
   ],
   "compilerOptions": {
     "jsx": "react-jsx",
-    "moduleResolution": "NodeNext",
     "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
     "types": ["node"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]
