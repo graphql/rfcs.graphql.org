@@ -406,7 +406,8 @@ async function mergeDocuments(records: Map<string, RfcRecord>): Promise<void> {
     if (
       !entry.isFile() ||
       !entry.name.endsWith(".md") ||
-      entry.name === "README.md"
+      entry.name === "README.md" ||
+      entry.name === "TEMPLATE.md"
     ) {
       continue;
     }
