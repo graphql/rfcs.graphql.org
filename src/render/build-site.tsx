@@ -376,6 +376,9 @@ function AllRfcsPage({ data }: { data: SiteData }) {
 
 function RfcPage(props: { frontmatter: RfcFrontmatter; body: string }) {
   const { frontmatter, body } = props;
+  const openedOn = getOpenedOn(frontmatter.events);
+  const secondaryDate = getSecondaryDate(frontmatter);
+
   return (
     <Layout
       title={`${frontmatter.title} | GraphQL RFC Tracker`}
@@ -385,7 +388,16 @@ function RfcPage(props: { frontmatter: RfcFrontmatter; body: string }) {
       <section className="hero hero-compact">
         <p className="eyebrow">{stageLabel(frontmatter.stage)}</p>
         <h1>{frontmatter.title}</h1>
-        <p className="lede">{frontmatter.description}</p>
+        <div className="hero-meta">
+          <div>
+            <span className="meta-label">Opened on</span>
+            <strong>{openedOn}</strong>
+          </div>
+          <div>
+            <span className="meta-label">{secondaryDate.label}</span>
+            <strong>{secondaryDate.value}</strong>
+          </div>
+        </div>
       </section>
 
       <section className="section-grid">
@@ -637,6 +649,38 @@ function formatMonthLabel(date: string): string {
     },
   );
   return `${label} ${year}`;
+}
+
+function getOpenedOn(events: Event[]): string {
+  if (events.length === 0) {
+    return "-";
+  }
+  const oldest = [...events].sort(
+    (left, right) => Date.parse(left.date) - Date.parse(right.date),
+  )[0];
+  return formatDate(oldest.date);
+}
+
+function getSecondaryDate(frontmatter: RfcFrontmatter): {
+  label: "Merged on" | "Closed on" | "Updated on";
+  value: string;
+} {
+  if (frontmatter.mergedAt) {
+    return {
+      label: "Merged on",
+      value: formatDate(frontmatter.mergedAt),
+    };
+  }
+  if (frontmatter.closedAt) {
+    return {
+      label: "Closed on",
+      value: formatDate(frontmatter.closedAt),
+    };
+  }
+  return {
+    label: "Updated on",
+    value: formatDate(frontmatter.updatedAt),
+  };
 }
 
 async function writePage(
