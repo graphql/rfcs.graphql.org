@@ -128,7 +128,7 @@ function commitsMarkdown(event: CommitsPushedEvent): string {
     `- ${event.commits.length} commits pushed on ${formatDate(event.date)}:`,
     ...event.commits.map(
       (commit) =>
-        `  - [${escapeInlineMarkdown(commit.headline)}](${commit.href}) by ${commitAuthor(commit)}`,
+        `  - ${commitAuthor(commit)} committed "[${escapeInlineMarkdown(commit.headline)}](${commit.href})"`,
     ),
   ].join("\n");
 }

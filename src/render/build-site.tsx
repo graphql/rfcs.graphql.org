@@ -512,23 +512,26 @@ function renderActivityEvent(event: Event): React.ReactNode {
       const commit = event.commits[0];
       return (
         <>
-          <a href={commit.href}>{commit.headline}</a> on {formatDate(event.date)} by{" "}
-          {commit.ghUser ? `@${commit.ghUser}` : commit.authorName ?? "unknown"}
+          {commit.ghUser
+            ? `@${commit.ghUser}`
+            : (commit.authorName ?? "Someone")}{" "}
+          committed "<a href={commit.href}>{commit.headline}</a>" on{" "}
+          {formatDate(event.date)}
         </>
       );
     }
 
     return (
       <>
-        <a href={event.href}>
-          {event.commits.length} commits pushed
-        </a>{" "}
-        on {formatDate(event.date)}
+        <a href={event.href}>{event.commits.length} commits pushed</a> on{" "}
+        {formatDate(event.date)}
         <ul className="activity-event-commits">
           {event.commits.map((commit) => (
             <li key={commit.href}>
-              <a href={commit.href}>{commit.headline}</a> by{" "}
-              {commit.ghUser ? `@${commit.ghUser}` : commit.authorName ?? "unknown"}
+              {commit.ghUser
+                ? `@${commit.ghUser}`
+                : (commit.authorName ?? "unknown")}{" "}
+              committed "<a href={commit.href}>{commit.headline}</a>"
             </li>
           ))}
         </ul>
@@ -540,41 +543,43 @@ function renderActivityEvent(event: Event): React.ReactNode {
     case "prCreated":
       return (
         <>
-          <a href={event.href}>Spec PR created</a> on {formatDate(event.date)} by{" "}
-          {event.actor ?? "unknown"}
+          <a href={event.href}>Spec PR</a> created on {formatDate(event.date)}{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "docCreated":
       return (
         <>
-          <a href={event.href}>RFC document created</a> on {formatDate(event.date)} by{" "}
-          {event.actor ?? "unknown"}
+          <a href={event.href}>RFC document created</a> on{" "}
+          {formatDate(event.date)} by {event.actor ?? "unknown"}
         </>
       );
     case "docUpdated":
       return (
         <>
-          <a href={event.href}>RFC document updated</a> on {formatDate(event.date)} by{" "}
-          {event.actor ?? "unknown"}
+          <a href={event.href}>RFC document updated</a> on{" "}
+          {formatDate(event.date)} by {event.actor ?? "unknown"}
         </>
       );
     case "wgDiscussionCreated":
       return (
         <>
-          <a href={event.href}>WG discussion created</a> on {formatDate(event.date)} by{" "}
-          {event.actor ?? "unknown"}
+          <a href={event.href}>WG discussion created</a> on{" "}
+          {formatDate(event.date)} by {event.actor ?? "unknown"}
         </>
       );
     case "wgAgenda":
       return (
         <>
-          Added to <a href={event.href}>WG agenda</a> on {formatDate(event.date)}
+          Added to <a href={event.href}>WG agenda</a> on{" "}
+          {formatDate(event.date)}
         </>
       );
     case "wgNotes":
       return (
         <>
-          Mentioned in <a href={event.href}>WG notes</a> on {formatDate(event.date)}
+          Mentioned in <a href={event.href}>WG notes</a> on{" "}
+          {formatDate(event.date)}
         </>
       );
   }
@@ -618,9 +623,7 @@ function groupActivityByMonth(activity: ActivityEntry[]) {
           (left, right) => Date.parse(right.date) - Date.parse(left.date),
         ),
       }))
-      .sort((left, right) =>
-        left.identifier.localeCompare(right.identifier),
-      ),
+      .sort((left, right) => left.identifier.localeCompare(right.identifier)),
   }));
 }
 
