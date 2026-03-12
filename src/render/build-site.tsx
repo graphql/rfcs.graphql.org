@@ -147,7 +147,7 @@ function Layout(props: {
         <div className="page-shell">
           <header className="site-header">
             <a className="brand" href="/">
-              <span className="brand-mark">GraphQL</span>
+              <span className="brand-mark">GraphQL</span>{" "}
               <span className="brand-copy">RFC Tracker</span>
             </a>
             <nav className="site-nav">
