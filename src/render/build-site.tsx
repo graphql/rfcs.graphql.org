@@ -33,8 +33,24 @@ function assertSafeFilesystemComponent(str: string): string {
   return str;
 }
 
+function assertSafeFilesystemPath(str: string): string {
+  const parts = str.split("/");
+  if (parts.length === 0)
+    throw new Error(`Invalid path component: empty string`);
+  parts.forEach(assertSafeFilesystemComponent);
+  return str;
+}
+
 function assertSafeURLComponent(str: string): string {
   return assertSafeFilesystemComponent(str);
+}
+
+function assertSafeURLPath(str: string): string {
+  const parts = str.split("/");
+  if (parts.length === 0)
+    throw new Error(`Invalid path component: empty string`);
+  parts.forEach(assertSafeURLComponent);
+  return str;
 }
 
 async function main(): Promise<void> {
@@ -66,7 +82,7 @@ async function main(): Promise<void> {
     data.rfcs.map(async (summary) => {
       const markdownPath = path.join(
         ROOT,
-        assertSafeFilesystemComponent(summary.markdownPath),
+        assertSafeFilesystemPath(summary.markdownPath),
       );
       const source = await fs.readFile(markdownPath, "utf8");
       const parsed = matter(source);
@@ -141,6 +157,8 @@ function Layout(props: {
 }
 
 function HomePage({ data }: { data: SiteData }) {
+  const openRfcs = data.rfcs.filter((rfc) => !rfc.mergedAt);
+
   return (
     <Layout
       title="GraphQL RFC Tracker"
@@ -174,7 +192,7 @@ function HomePage({ data }: { data: SiteData }) {
 
       <section className="section-block">
         <div className="section-head">
-          <h2>All RFCs</h2>
+          <h2>Open RFCs</h2>
           <a href="/activity/">View activity</a>
         </div>
         <div className="table-wrap">
@@ -189,7 +207,7 @@ function HomePage({ data }: { data: SiteData }) {
               </tr>
             </thead>
             <tbody>
-              {data.rfcs.map((rfc) => (
+              {openRfcs.map((rfc) => (
                 <tr key={rfc.identifier}>
                   <td>
                     <a href={`/rfcs/${rfc.identifier}/`}>
