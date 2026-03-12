@@ -69,6 +69,16 @@ async function main(): Promise<void> {
   });
 
   await writePage(
+    path.join(DIST_DIR, "all", "index.html"),
+    <AllRfcsPage data={data} />,
+    {
+      title: "All GraphQL RFCs",
+      description: "Complete listing of tracked GraphQL RFCs across all stages.",
+      pathname: "/all/",
+    },
+  );
+
+  await writePage(
     path.join(DIST_DIR, "activity", "index.html"),
     <ActivityPage data={data} />,
     {
@@ -140,7 +150,7 @@ function Layout(props: {
               <span className="brand-copy">RFC Tracker</span>
             </a>
             <nav className="site-nav">
-              <a href="/">All RFCs</a>
+              <a href="/all/">All RFCs</a>
               <a href="/activity/">Activity</a>
               <a href="https://github.com/graphql/graphql-spec">graphql-spec</a>
               <a href="https://github.com/graphql/graphql-wg">graphql-wg</a>
@@ -274,6 +284,68 @@ function ActivityPage({ data }: { data: SiteData }) {
             </li>
           ))}
         </ol>
+      </section>
+    </Layout>
+  );
+}
+
+function AllRfcsPage({ data }: { data: SiteData }) {
+  return (
+    <Layout
+      title="All GraphQL RFCs"
+      description="Complete listing of tracked GraphQL RFCs across all stages."
+      pathname="/all/"
+    >
+      <section className="hero hero-compact">
+        <p className="eyebrow">Complete index</p>
+        <h1>All RFCs</h1>
+        <p className="lede">
+          Full tracker view including open, merged, rejected, and superseded RFCs.
+        </p>
+      </section>
+
+      <section className="section-block">
+        <div className="section-head">
+          <h2>All RFCs</h2>
+          <a href="/">View open RFCs</a>
+        </div>
+        <div className="table-wrap">
+          <table className="rfc-table">
+            <thead>
+              <tr>
+                <th>RFC</th>
+                <th>Stage</th>
+                <th>Champion</th>
+                <th>Title</th>
+                <th>Latest</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rfcs.map((rfc) => (
+                <tr key={rfc.identifier}>
+                  <td>
+                    <a href={`/rfcs/${rfc.identifier}/`}>
+                      {formatIdentifier(rfc.identifier)}
+                    </a>
+                    {rfc.nextStage ? <span className="badge">Next stage</span> : null}
+                  </td>
+                  <td>{stageLabel(rfc.stage)}</td>
+                  <td>
+                    {rfc.champion ? (
+                      <a href={`https://github.com/${rfc.champion}`}>@{rfc.champion}</a>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                  <td>
+                    <a href={`/rfcs/${rfc.identifier}/`}>{rfc.title}</a>
+                  </td>
+                  <td>{summarizeEvent(rfc.events[0])}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </Layout>
   );
