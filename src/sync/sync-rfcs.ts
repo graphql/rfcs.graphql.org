@@ -225,7 +225,10 @@ async function main(): Promise<void> {
         event,
       })),
     )
-    .sort((left, right) => Date.parse(right.event.date) - Date.parse(left.event.date));
+    .sort(
+      (left, right) =>
+        Date.parse(right.event.date) - Date.parse(left.event.date),
+    );
 
   const siteData: SiteData = {
     generatedAt: new Date().toISOString(),
@@ -234,7 +237,11 @@ async function main(): Promise<void> {
     activity,
   };
 
-  await fs.writeFile(DATA_PATH, JSON.stringify(siteData, null, 2) + "\n", "utf8");
+  await fs.writeFile(
+    DATA_PATH,
+    JSON.stringify(siteData, null, 2) + "\n",
+    "utf8",
+  );
 }
 
 async function ensureGraphqlWgCheckout(): Promise<void> {
@@ -313,7 +320,8 @@ function mergeSpecPr(records: Map<string, RfcRecord>, pr: SpecPrNode): void {
   record.title = tidyTitle(pr.title);
   record.shortname = record.title;
   record.stage = labelsToStage(labels);
-  record.champion = pr.assignees.nodes[0]?.login ?? pr.author?.login ?? undefined;
+  record.champion =
+    pr.assignees.nodes[0]?.login ?? pr.author?.login ?? undefined;
   record.closedAt = pr.closedAt ?? undefined;
   record.mergedAt = pr.mergedAt ?? undefined;
   record.mergedBy = pr.mergedBy?.login ?? undefined;
@@ -362,10 +370,17 @@ function mergeSpecPr(records: Map<string, RfcRecord>, pr: SpecPrNode): void {
   }
 }
 
-function mergeDiscussion(records: Map<string, RfcRecord>, discussion: DiscussionNode): void {
+function mergeDiscussion(
+  records: Map<string, RfcRecord>,
+  discussion: DiscussionNode,
+): void {
   const identifier = `wg${discussion.number}`;
   const labels = discussion.labels.nodes.map((node) => node?.name ?? undefined);
-  const record = getOrCreateRecord(records, identifier, tidyTitle(discussion.title));
+  const record = getOrCreateRecord(
+    records,
+    identifier,
+    tidyTitle(discussion.title),
+  );
   record.title = tidyTitle(discussion.title);
   record.shortname = record.title;
   record.stage = labelsToStage(labels) ?? "0";
@@ -388,7 +403,11 @@ function mergeDiscussion(records: Map<string, RfcRecord>, discussion: Discussion
 async function mergeDocuments(records: Map<string, RfcRecord>): Promise<void> {
   const docsDir = path.join(WG_DIR, "rfcs");
   for (const entry of await fs.readdir(docsDir, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(".md") || entry.name === "README.md") {
+    if (
+      !entry.isFile() ||
+      !entry.name.endsWith(".md") ||
+      entry.name === "README.md"
+    ) {
       continue;
     }
     const fullPath = path.join(docsDir, entry.name);
@@ -445,7 +464,10 @@ async function addWgMentions(records: Map<string, RfcRecord>): Promise<void> {
       const content = await fs.readFile(filePath, "utf8");
       const eventType = group === "agendas" ? "wgAgenda" : "wgNotes";
       const date = getDateFromPath(filePath);
-      const relative = path.relative(WG_DIR, filePath).split(path.sep).join("/");
+      const relative = path
+        .relative(WG_DIR, filePath)
+        .split(path.sep)
+        .join("/");
       const href = `https://github.com/graphql/graphql-wg/blob/main/${relative}`;
       for (const match of content.matchAll(
         /https:\/\/github\.com\/graphql\/graphql-spec\/pull\/([0-9]+)/gi,
@@ -465,67 +487,78 @@ async function addWgMentions(records: Map<string, RfcRecord>): Promise<void> {
   }
 }
 
-async function writeGeneratedMarkdown(records: Map<string, RfcRecord>): Promise<RfcSummary[]> {
+async function writeGeneratedMarkdown(
+  records: Map<string, RfcRecord>,
+): Promise<RfcSummary[]> {
   const summaries = [...records.values()]
     .map((record) => buildSummary(record))
     .sort(compareRfcSummaries);
 
   await Promise.all(
     summaries.map(async (summary) => {
-    const markdownPath = path.join(RFCS_DIR, `${summary.identifier}.md`);
-    const frontmatter: RfcFrontmatter = {
-      title: summary.title,
-      identifier: summary.identifier,
-      shortname: summary.shortname,
-      stage: summary.stage,
-      champion: summary.champion,
-      closedAt: summary.closedAt,
-      mergedAt: summary.mergedAt,
-      mergedBy: summary.mergedBy,
-      prUrl: summary.prUrl,
-      wgDiscussionUrl: summary.wgDiscussionUrl,
-      rfcDocUrl: summary.rfcDocUrl,
-      nextStage: summary.nextStage,
-      related: summary.related,
-      events: summary.events,
-      updatedAt: summary.updatedAt,
-      description: summary.description,
-    };
-    const record = records.get(summary.identifier);
-    if (!record) {
-      throw new Error(`Missing RFC record for ${summary.identifier}`);
-    }
-    const content = [
-      "---",
-      YAML.stringify(frontmatter).trimEnd(),
-      "---",
-      "",
-      `# ${summary.title}`,
-      "",
-      "## At a glance",
-      "",
-      `- Identifier: ${formatIdentifier(summary.identifier)}`,
-      `- Stage: ${stageLabel(summary.stage)}`,
-      `- Champion: ${summary.champion ? `[@${summary.champion}](https://github.com/${summary.champion})` : "-"}`,
-      `- Latest activity: ${escapeInlineMarkdown(summarizeEvent(summary.events[0]))}`,
-      ...(summary.prUrl ? [`- Spec PR: [${summary.prUrl}](${summary.prUrl})`] : []),
-      ...(summary.rfcDocUrl ? [`- RFC document: [${summary.rfcDocUrl}](${summary.rfcDocUrl})`] : []),
-      ...(summary.wgDiscussionUrl
-        ? [`- WG discussion: [${summary.wgDiscussionUrl}](${summary.wgDiscussionUrl})`]
-        : []),
-      ...(summary.related.length > 0
-        ? [
-            "- Related:",
-            ...summary.related.map((related) => `  - [${formatIdentifier(related)}](/rfcs/${related}/)`),
-          ]
-        : []),
-      "",
-      ...renderContentSections(record),
-      "## Timeline",
-      "",
-      ...summary.events.map((event) => eventMarkdown(event)),
-      "",
-    ].join("\n");
+      const markdownPath = path.join(RFCS_DIR, `${summary.identifier}.md`);
+      const frontmatter: RfcFrontmatter = {
+        title: summary.title,
+        identifier: summary.identifier,
+        shortname: summary.shortname,
+        stage: summary.stage,
+        champion: summary.champion,
+        closedAt: summary.closedAt,
+        mergedAt: summary.mergedAt,
+        mergedBy: summary.mergedBy,
+        prUrl: summary.prUrl,
+        wgDiscussionUrl: summary.wgDiscussionUrl,
+        rfcDocUrl: summary.rfcDocUrl,
+        nextStage: summary.nextStage,
+        related: summary.related,
+        events: summary.events,
+        updatedAt: summary.updatedAt,
+        description: summary.description,
+      };
+      const record = records.get(summary.identifier);
+      if (!record) {
+        throw new Error(`Missing RFC record for ${summary.identifier}`);
+      }
+      const content = [
+        "---",
+        YAML.stringify(frontmatter).trimEnd(),
+        "---",
+        "",
+        `# ${summary.title}`,
+        "",
+        "## At a glance",
+        "",
+        `- Identifier: ${formatIdentifier(summary.identifier)}`,
+        `- Stage: ${stageLabel(summary.stage)}`,
+        `- Champion: ${summary.champion ? `[@${summary.champion}](https://github.com/${summary.champion})` : "-"}`,
+        `- Latest activity: ${escapeInlineMarkdown(summarizeEvent(summary.events[0]))}`,
+        ...(summary.prUrl
+          ? [`- Spec PR: [${summary.prUrl}](${summary.prUrl})`]
+          : []),
+        ...(summary.rfcDocUrl
+          ? [`- RFC document: [${summary.rfcDocUrl}](${summary.rfcDocUrl})`]
+          : []),
+        ...(summary.wgDiscussionUrl
+          ? [
+              `- WG discussion: [${summary.wgDiscussionUrl}](${summary.wgDiscussionUrl})`,
+            ]
+          : []),
+        ...(summary.related.length > 0
+          ? [
+              "- Related:",
+              ...summary.related.map(
+                (related) =>
+                  `  - [${formatIdentifier(related)}](/rfcs/${related}/)`,
+              ),
+            ]
+          : []),
+        "",
+        ...renderContentSections(record),
+        "## Timeline",
+        "",
+        ...summary.events.map((event) => eventMarkdown(event)),
+        "",
+      ].join("\n");
       await fs.writeFile(markdownPath, content, "utf8");
     }),
   );
@@ -556,7 +589,9 @@ function renderContentSections(record: RfcRecord): string[] {
 }
 
 function buildSummary(record: RfcRecord): RfcSummary {
-  const related = [...record.related].filter((value) => value !== record.identifier).sort();
+  const related = [...record.related]
+    .filter((value) => value !== record.identifier)
+    .sort();
   const events = [...record.events].sort(
     (left, right) => Date.parse(right.date) - Date.parse(left.date),
   );
@@ -582,12 +617,14 @@ function buildSummary(record: RfcRecord): RfcSummary {
 }
 
 function compareRfcSummaries(left: RfcSummary, right: RfcSummary): number {
-  const supersededWeight = (left.stage === "S" ? 1 : 0) - (right.stage === "S" ? 1 : 0);
+  const supersededWeight =
+    (left.stage === "S" ? 1 : 0) - (right.stage === "S" ? 1 : 0);
   if (supersededWeight !== 0) {
     return supersededWeight;
   }
   const closedWeight =
-    (left.closedAt && !left.mergedAt ? 1 : 0) - (right.closedAt && !right.mergedAt ? 1 : 0);
+    (left.closedAt && !left.mergedAt ? 1 : 0) -
+    (right.closedAt && !right.mergedAt ? 1 : 0);
   if (closedWeight !== 0) {
     return closedWeight;
   }
@@ -595,7 +632,8 @@ function compareRfcSummaries(left: RfcSummary, right: RfcSummary): number {
   if (stageDelta !== 0) {
     return stageDelta;
   }
-  const nextStageDelta = Number(right.nextStage ?? false) - Number(left.nextStage ?? false);
+  const nextStageDelta =
+    Number(right.nextStage ?? false) - Number(left.nextStage ?? false);
   if (nextStageDelta !== 0) {
     return nextStageDelta;
   }
@@ -654,7 +692,11 @@ async function walkMarkdownFiles(dir: string): Promise<string[]> {
       if (entry.isDirectory()) {
         return walkMarkdownFiles(fullPath);
       }
-      if (entry.isFile() && entry.name.endsWith(".md") && entry.name !== "README.md") {
+      if (
+        entry.isFile() &&
+        entry.name.endsWith(".md") &&
+        entry.name !== "README.md"
+      ) {
         return [fullPath];
       }
       return [];

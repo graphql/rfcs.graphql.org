@@ -16,8 +16,16 @@
 
 html {
   background:
-    radial-gradient(circle at top left, rgba(202, 60, 37, 0.12), transparent 26rem),
-    radial-gradient(circle at top right, rgba(11, 110, 79, 0.14), transparent 28rem),
+    radial-gradient(
+      circle at top left,
+      rgba(202, 60, 37, 0.12),
+      transparent 26rem
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(11, 110, 79, 0.14),
+      transparent 28rem
+    ),
     var(--bg);
   color: var(--ink);
   font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
