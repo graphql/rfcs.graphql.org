@@ -1,7 +1,33 @@
 {
-  "name": "@localrepo/rfcs",
+  "name": "rfcs.graphql.org",
   "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf build dist",
+    "compile": "tsc -p tsconfig.json",
+    "sync-rfcs": "yarn compile && node build/src/sync/sync-rfcs.js",
+    "build-site": "yarn compile && node build/src/render/build-site.js",
+    "build": "yarn compile && node build/src/sync/sync-rfcs.js && node build/src/render/build-site.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@octokit/graphql": "9.0.3",
+    "clsx": "2.1.1",
+    "gray-matter": "4.0.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "yaml": "2.8.2"
+  },
   "devDependencies": {
-    "prettier": "^3.8.1"
+    "@types/node": "25.4.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "prettier": "^3.8.1",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   }
 }
