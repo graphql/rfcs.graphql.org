@@ -562,21 +562,21 @@ function renderActivityEvent(event: Event): React.ReactNode {
     case "docCreated":
       return (
         <>
-          <a href={event.href}>RFC document created</a> on{" "}
+          <a href={event.href}>RFC document</a> created on{" "}
           {formatDate(event.date)} by {event.actor ?? "unknown"}
         </>
       );
     case "docUpdated":
       return (
         <>
-          <a href={event.href}>RFC document updated</a> on{" "}
+          <a href={event.href}>RFC document</a> updated on{" "}
           {formatDate(event.date)} by {event.actor ?? "unknown"}
         </>
       );
     case "wgDiscussionCreated":
       return (
         <>
-          <a href={event.href}>WG discussion created</a> on{" "}
+          <a href={event.href}>WG discussion</a> created on{" "}
           {formatDate(event.date)} by {event.actor ?? "unknown"}
         </>
       );

@@ -105,17 +105,17 @@ export function eventMarkdown(event: EventBase | Event): string {
   }
   switch (event.type) {
     case "prCreated":
-      return `- [Spec PR created](${event.href}) on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
+      return `- [Spec PR](${event.href}) created on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
     case "docCreated":
-      return `- [RFC document created](${event.href}) on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
+      return `- [RFC document](${event.href}) created on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
     case "docUpdated":
-      return `- [RFC document updated](${event.href}) on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
+      return `- [RFC document](${event.href}) updated on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
     case "wgDiscussionCreated":
-      return `- [WG discussion created](${event.href}) on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
+      return `- [WG discussion](${event.href}) created on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
     case "wgAgenda":
       return `- [Added to WG agenda](${event.href}) on ${formatDate(event.date)}`;
     case "wgNotes":
-      return `- [Mentioned in WG notes](${event.href}) on ${formatDate(event.date)}`;
+      return `- Mentioned in [WG notes](${event.href}) on ${formatDate(event.date)}`;
   }
 }
 
