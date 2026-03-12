@@ -50,7 +50,7 @@ pre {
 }
 
 .page-shell {
-  width: min(1180px, calc(100vw - 2rem));
+  width: min(1320px, calc(100vw - 2rem));
   margin: 0 auto;
   padding: 1rem 0 4rem;
 }
@@ -138,7 +138,8 @@ h3 {
 
 h1 {
   margin: 0;
-  font-size: clamp(2.6rem, 8vw, 5rem);
+  font-size: clamp(2.3rem, 5.6vw, 4.2rem);
+  line-height: 1.12;
 }
 
 h2 {
