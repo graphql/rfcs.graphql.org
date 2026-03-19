@@ -2,6 +2,7 @@ import type {
   CommitsPushedEvent,
   Event,
   EventBase,
+  LabelChangedEvent,
   RfcSummary,
   Stage,
   TimelineCommit,
@@ -75,6 +76,9 @@ export function summarizeEvent(event: Event): string {
   if (event.type === "commitsPushed") {
     return `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"} pushed on ${formatDate(event.date)}`;
   }
+  if (event.type === "labelAdded" || event.type === "labelRemoved") {
+    return summarizeLabelEvent(event as LabelChangedEvent);
+  }
   switch (event.type) {
     case "prCreated":
       return `Spec PR created on ${formatDate(event.date)}`;
@@ -106,6 +110,9 @@ function commitAuthor(commit: TimelineCommit): string {
 export function eventMarkdown(event: EventBase | Event): string {
   if (event.type === "commitsPushed") {
     return commitsMarkdown(event);
+  }
+  if (event.type === "labelAdded" || event.type === "labelRemoved") {
+    return labelMarkdown(event as LabelChangedEvent);
   }
   switch (event.type) {
     case "prCreated":
@@ -139,6 +146,17 @@ function commitsMarkdown(event: CommitsPushedEvent): string {
         `  - ${commitAuthor(commit)} committed "[${escapeInlineMarkdown(commit.headline)}](${commit.href})"`,
     ),
   ].join("\n");
+}
+
+function summarizeLabelEvent(event: LabelChangedEvent): string {
+  return `Label ${event.type === "labelAdded" ? "added" : "removed"}: ${event.label} on ${formatDate(event.date)}`;
+}
+
+function labelMarkdown(event: LabelChangedEvent): string {
+  const verb = event.type === "labelAdded" ? "added" : "removed";
+  return `- Label "${escapeInlineMarkdown(event.label)}" ${verb} on ${formatDate(event.date)}${
+    event.actor ? ` by ${actorLabel(event.actor)}` : ""
+  }`;
 }
 
 export function escapeInlineMarkdown(value: string): string {
@@ -198,4 +216,20 @@ export function labelsToStage(labels: Array<string | undefined>): Stage {
 
 export function hasNextStageLabel(labels: Array<string | undefined>): boolean {
   return labels.some((label) => label != null && /next stage/i.test(label));
+}
+
+export function trackedLabelName(label: string): string | null {
+  const stageMatch = label.match(/RFC\s*([0123X])/i);
+  if (stageMatch) {
+    return /Superseded/i.test(label)
+      ? "RFC X / Superseded"
+      : `RFC ${stageMatch[1].toUpperCase()}`;
+  }
+  if (/next stage/i.test(label)) {
+    return "Next stage";
+  }
+  if (/stale/i.test(label)) {
+    return "Stale";
+  }
+  return null;
 }

@@ -18,6 +18,8 @@ export interface EventBase extends EventCore {
     | "prCreated"
     | "prMerged"
     | "prClosed"
+    | "labelAdded"
+    | "labelRemoved"
     | "docCreated"
     | "docUpdated"
     | "wgDiscussionCreated"
@@ -30,7 +32,12 @@ export interface CommitsPushedEvent extends EventCore {
   commits: TimelineCommit[];
 }
 
-export type Event = EventBase | CommitsPushedEvent;
+export interface LabelChangedEvent extends EventCore {
+  type: "labelAdded" | "labelRemoved";
+  label: string;
+}
+
+export type Event = EventBase | CommitsPushedEvent | LabelChangedEvent;
 
 export interface RfcSummary {
   identifier: string;

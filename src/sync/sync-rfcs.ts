@@ -16,12 +16,14 @@ import {
   stageLabel,
   stageWeight,
   summarizeEvent,
+  trackedLabelName,
   tidyTitle,
 } from "../lib/format.ts";
 import type {
   ActivityEntry,
   CommitsPushedEvent,
   Event,
+  LabelChangedEvent,
   RfcFrontmatter,
   RfcSummary,
   SiteData,
@@ -33,6 +35,7 @@ const ROOT = process.cwd();
 const GENERATED_DIR = path.join(ROOT, "generated");
 const RFCS_DIR = path.join(GENERATED_DIR, "rfcs");
 const DATA_PATH = path.join(GENERATED_DIR, "site.json");
+const STATE_PATH = path.join(ROOT, "state.json");
 const TEMP_DIR = path.join(ROOT, "temp");
 const WG_DIR = path.join(TEMP_DIR, "graphql-wg");
 const GRAPHQL_SPEC_PR_QUERY = `
@@ -194,6 +197,27 @@ interface DiscussionNode {
   labels: { nodes: Array<{ name: string | null } | null> };
 }
 
+interface SyncState {
+  prLabelEvents?: Record<
+    string,
+    {
+      updatedAt: string;
+      events: LabelChangedEvent[];
+    }
+  >;
+}
+
+interface GitHubIssueEvent {
+  event: string;
+  created_at: string;
+  actor?: {
+    login?: string | null;
+  } | null;
+  label?: {
+    name?: string | null;
+  } | null;
+}
+
 async function main(): Promise<void> {
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
@@ -202,11 +226,18 @@ async function main(): Promise<void> {
 
   await fs.mkdir(RFCS_DIR, { recursive: true });
   await ensureGraphqlWgCheckout();
+  const state = await loadState();
 
   const records = new Map<string, RfcRecord>();
 
   for (const pr of await fetchAllSpecPrs(token)) {
     mergeSpecPr(records, pr);
+    for (const event of await getCachedPrLabelEvents(state, token, pr)) {
+      const record = records.get(String(pr.number));
+      if (record) {
+        addEvent(record, event);
+      }
+    }
   }
   for (const discussion of await fetchAllDiscussions(token)) {
     mergeDiscussion(records, discussion);
@@ -242,6 +273,19 @@ async function main(): Promise<void> {
     JSON.stringify(siteData, null, 2) + "\n",
     "utf8",
   );
+  await saveState(state);
+}
+
+async function loadState(): Promise<SyncState> {
+  try {
+    return JSON.parse(await fs.readFile(STATE_PATH, "utf8")) as SyncState;
+  } catch {
+    return {};
+  }
+}
+
+async function saveState(state: SyncState): Promise<void> {
+  await fs.writeFile(STATE_PATH, JSON.stringify(state, null, 2) + "\n", "utf8");
 }
 
 async function ensureGraphqlWgCheckout(): Promise<void> {
@@ -384,6 +428,79 @@ function mergeSpecPr(records: Map<string, RfcRecord>, pr: SpecPrNode): void {
       commits,
     });
   }
+}
+
+async function getCachedPrLabelEvents(
+  state: SyncState,
+  token: string,
+  pr: SpecPrNode,
+): Promise<LabelChangedEvent[]> {
+  state.prLabelEvents ??= {};
+  const key = String(pr.number);
+  const cached = state.prLabelEvents[key];
+  if (cached && cached.updatedAt === pr.updatedAt) {
+    return cached.events;
+  }
+
+  const events = await fetchPrLabelEvents(token, pr.number);
+  state.prLabelEvents[key] = {
+    updatedAt: pr.updatedAt,
+    events,
+  };
+  return events;
+}
+
+async function fetchPrLabelEvents(
+  token: string,
+  prNumber: number,
+): Promise<LabelChangedEvent[]> {
+  const events: LabelChangedEvent[] = [];
+  let page = 1;
+
+  while (true) {
+    const response = await fetch(
+      `https://api.github.com/repos/graphql/graphql-spec/issues/${prNumber}/events?per_page=100&page=${page}`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${token}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+          "User-Agent": "rfcs.graphql.org-sync",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch issue events for PR #${prNumber}: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const pageEvents = (await response.json()) as GitHubIssueEvent[];
+    for (const issueEvent of pageEvents) {
+      if (issueEvent.event !== "labeled" && issueEvent.event !== "unlabeled") {
+        continue;
+      }
+      const label = trackedLabelName(issueEvent.label?.name ?? "");
+      if (!label) {
+        continue;
+      }
+      events.push({
+        type: issueEvent.event === "labeled" ? "labelAdded" : "labelRemoved",
+        date: issueEvent.created_at,
+        href: `https://github.com/graphql/graphql-spec/pull/${prNumber}`,
+        actor: issueEvent.actor?.login ?? null,
+        label,
+      });
+    }
+
+    if (pageEvents.length < 100) {
+      break;
+    }
+    page += 1;
+  }
+
+  return events;
 }
 
 function mergeDiscussion(
