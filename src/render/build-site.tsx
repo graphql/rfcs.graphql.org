@@ -9,6 +9,7 @@ import {
   formatDate,
   formatIdentifier,
   stageLabel,
+  stageWeight,
   summarizeEvent,
 } from "../lib/format.ts";
 import type {
@@ -168,7 +169,20 @@ function Layout(props: {
 }
 
 function HomePage({ data }: { data: SiteData }) {
-  const openRfcs = data.rfcs.filter((rfc) => !rfc.mergedAt && !rfc.closedAt);
+  const openRfcs = data.rfcs
+    .filter((rfc) => !rfc.mergedAt && !rfc.closedAt)
+    .sort((left, right) => {
+      const stageDelta = stageWeight(right.stage) - stageWeight(left.stage);
+      if (stageDelta !== 0) {
+        return stageDelta;
+      }
+      const nextStageDelta =
+        Number(right.nextStage ?? false) - Number(left.nextStage ?? false);
+      if (nextStageDelta !== 0) {
+        return nextStageDelta;
+      }
+      return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+    });
 
   return (
     <Layout
