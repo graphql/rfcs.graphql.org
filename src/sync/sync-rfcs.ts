@@ -651,32 +651,40 @@ function getTrackedIssueEvents(
   issueEvents: CachedIssueEvent[],
   href: string,
 ): Event[] {
-  const byDay = new Map<string, CachedIssueEvent[]>();
-  const otherEvents: Event[] = [];
+  const labelEventsByDay = new Map<string, CachedIssueEvent[]>();
+  const latestEditByDay = new Map<string, CachedIssueEvent>();
 
   for (const issueEvent of issueEvents) {
     if (issueEvent.type === "labeled" || issueEvent.type === "unlabeled") {
       const day = formatDate(issueEvent.date);
-      const events = byDay.get(day) ?? [];
+      const events = labelEventsByDay.get(day) ?? [];
       events.push(issueEvent);
-      byDay.set(day, events);
+      labelEventsByDay.set(day, events);
       continue;
     }
     if (issueEvent.type === "edited") {
-      otherEvents.push({
+      const day = formatDate(issueEvent.date);
+      const latestEdit = latestEditByDay.get(day);
+      if (!latestEdit || Date.parse(issueEvent.date) > Date.parse(latestEdit.date)) {
+        latestEditByDay.set(day, issueEvent);
+      }
+    }
+  }
+
+  const statusEvents = [...labelEventsByDay.entries()]
+    .map(([day, dayEvents]) => summarizeTrackedLabelEvents(day, dayEvents, href))
+    .filter((event): event is StatusChangedEvent => event != null);
+  const editEvents = [...latestEditByDay.values()].map(
+    (issueEvent) =>
+      ({
         type: "topCommentEdited",
         date: issueEvent.date,
         href,
         actor: issueEvent.actor,
-      } satisfies Event);
-    }
-  }
+      }) satisfies Event,
+  );
 
-  const statusEvents = [...byDay.entries()]
-    .map(([day, dayEvents]) => summarizeTrackedLabelEvents(day, dayEvents, href))
-    .filter((event): event is StatusChangedEvent => event != null);
-
-  return [...statusEvents, ...otherEvents].sort(
+  return [...statusEvents, ...editEvents].sort(
     (left, right) => Date.parse(right.date) - Date.parse(left.date),
   );
 }

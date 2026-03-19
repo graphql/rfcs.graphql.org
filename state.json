@@ -1626,9 +1626,15 @@
           "date": "2026-01-15T19:24:19Z",
           "label": "Next stage",
           "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-03-19T13:09:04Z",
+          "label": "Next stage",
+          "type": "unlabeled"
         }
       ],
-      "updatedAt": "2026-02-05T19:06:39Z"
+      "updatedAt": "2026-03-19T13:09:04Z"
     },
     "graphql/graphql-spec#1200": {
       "events": [
