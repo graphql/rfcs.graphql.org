@@ -171,18 +171,7 @@ function Layout(props: {
 function HomePage({ data }: { data: SiteData }) {
   const openRfcs = data.rfcs
     .filter((rfc) => !rfc.mergedAt && !rfc.closedAt)
-    .sort((left, right) => {
-      const stageDelta = stageWeight(right.stage) - stageWeight(left.stage);
-      if (stageDelta !== 0) {
-        return stageDelta;
-      }
-      const nextStageDelta =
-        Number(right.nextStage ?? false) - Number(left.nextStage ?? false);
-      if (nextStageDelta !== 0) {
-        return nextStageDelta;
-      }
-      return getLatestEventTimestamp(right) - getLatestEventTimestamp(left);
-    });
+    .sort(compareRfcListEntries);
 
   return (
     <Layout
@@ -322,6 +311,8 @@ function ActivityPage({ data }: { data: SiteData }) {
 }
 
 function AllRfcsPage({ data }: { data: SiteData }) {
+  const allRfcs = [...data.rfcs].sort(compareRfcListEntries);
+
   return (
     <Layout
       title="All GraphQL RFCs"
@@ -354,7 +345,7 @@ function AllRfcsPage({ data }: { data: SiteData }) {
               </tr>
             </thead>
             <tbody>
-              {data.rfcs.map((rfc) => (
+              {allRfcs.map((rfc) => (
                 <tr key={rfc.identifier}>
                   <td>
                     <a href={`/rfcs/${rfc.identifier}/`}>
@@ -771,6 +762,26 @@ function getSecondaryDate(frontmatter: RfcFrontmatter): {
 
 function getLatestActivityTimestamp(rfc: { events: Event[] }): number {
   return getLatestEventTimestamp(rfc);
+}
+
+function compareRfcListEntries(
+  left: { stage: RfcFrontmatter["stage"]; nextStage?: boolean; events: Event[] },
+  right: {
+    stage: RfcFrontmatter["stage"];
+    nextStage?: boolean;
+    events: Event[];
+  },
+): number {
+  const stageDelta = stageWeight(right.stage) - stageWeight(left.stage);
+  if (stageDelta !== 0) {
+    return stageDelta;
+  }
+  const nextStageDelta =
+    Number(right.nextStage ?? false) - Number(left.nextStage ?? false);
+  if (nextStageDelta !== 0) {
+    return nextStageDelta;
+  }
+  return getLatestEventTimestamp(right) - getLatestEventTimestamp(left);
 }
 
 function latestSummary(rfc: { updatedAt: string; events: Event[] }): string {
