@@ -742,7 +742,8 @@ function summarizeStageTransition(
   const addedStage = issueEvents
     .filter((issueEvent) => issueEvent.action === "labeled")
     .map((issueEvent) => issueEvent.label)
-    .find(isStageLikeLabel);
+    .filter(isStageLikeLabel)
+    .sort(compareStageLabelsDescending)[0];
   if (!addedStage) {
     return null;
   }
@@ -834,6 +835,29 @@ function isStageLikeLabel(label: string): boolean {
     label === "RFC X" ||
     label === "RFC X / Superseded"
   );
+}
+
+function compareStageLabelsDescending(left: string, right: string): number {
+  return stageWeight(labelToStage(right)) - stageWeight(labelToStage(left));
+}
+
+function labelToStage(label: string): Stage {
+  switch (label) {
+    case "RFC 0":
+      return "0";
+    case "RFC 1":
+      return "1";
+    case "RFC 2":
+      return "2";
+    case "RFC 3":
+      return "3";
+    case "RFC X":
+      return "X";
+    case "RFC X / Superseded":
+      return "S";
+    default:
+      return null;
+  }
 }
 
 function issueKeyFor(org: string, repo: string, number: number): string {
