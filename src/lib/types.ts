@@ -18,6 +18,7 @@ export interface EventBase extends EventCore {
     | "prCreated"
     | "prMerged"
     | "prClosed"
+    | "topCommentEdited"
     | "labelAdded"
     | "labelRemoved"
     | "docCreated"

@@ -198,7 +198,7 @@ interface DiscussionNode {
 }
 
 interface SyncState {
-  prEvents?: Record<
+  issueEvents?: Record<
     string,
     {
       updatedAt: string;
@@ -232,7 +232,11 @@ async function main(): Promise<void> {
 
   for (const pr of await fetchAllSpecPrs(token)) {
     mergeSpecPr(records, pr);
-    for (const event of getTrackedLabelEvents(await getCachedPrEvents(state, token, pr), pr.number)) {
+    const issueKey = issueKeyFor("graphql", "graphql-spec", pr.number);
+    for (const event of getTrackedIssueEvents(
+      await getCachedIssueEvents(state, token, issueKey, pr.updatedAt),
+      recordIssueHref("graphql", "graphql-spec", pr.number),
+    )) {
       const record = records.get(String(pr.number));
       if (record) {
         addEvent(record, event);
@@ -278,10 +282,9 @@ async function main(): Promise<void> {
 
 async function loadState(): Promise<SyncState> {
   try {
-    const state = JSON.parse(await fs.readFile(STATE_PATH, "utf8")) as SyncState & {
-      prLabelEvents?: unknown;
-    };
-    delete state.prLabelEvents;
+    const state = JSON.parse(
+      await fs.readFile(STATE_PATH, "utf8"),
+    ) as SyncState;
     return state;
   } catch {
     return {};
@@ -289,8 +292,11 @@ async function loadState(): Promise<SyncState> {
 }
 
 async function saveState(state: SyncState): Promise<void> {
-  delete (state as SyncState & { prLabelEvents?: unknown }).prLabelEvents;
-  await fs.writeFile(STATE_PATH, JSON.stringify(state, null, 2) + "\n", "utf8");
+  await fs.writeFile(
+    STATE_PATH,
+    JSON.stringify(sortJson(state), null, 2) + "\n",
+    "utf8",
+  );
 }
 
 async function ensureGraphqlWgCheckout(): Promise<void> {
@@ -435,36 +441,39 @@ function mergeSpecPr(records: Map<string, RfcRecord>, pr: SpecPrNode): void {
   }
 }
 
-async function getCachedPrEvents(
+async function getCachedIssueEvents(
   state: SyncState,
   token: string,
-  pr: SpecPrNode,
+  key: string,
+  updatedAt: string,
 ): Promise<GitHubIssueEvent[]> {
-  state.prEvents ??= {};
-  const key = String(pr.number);
-  const cached = state.prEvents[key];
-  if (cached && cached.updatedAt === pr.updatedAt) {
+  state.issueEvents ??= {};
+  const cached = state.issueEvents[key];
+  if (cached && cached.updatedAt === updatedAt) {
     return cached.events;
   }
 
-  const events = await fetchPrEvents(token, pr.number);
-  state.prEvents[key] = {
-    updatedAt: pr.updatedAt,
+  const { org, repo, number } = parseIssueKey(key);
+  const events = await fetchIssueEvents(token, org, repo, number);
+  state.issueEvents[key] = {
+    updatedAt,
     events,
   };
   return events;
 }
 
-async function fetchPrEvents(
+async function fetchIssueEvents(
   token: string,
-  prNumber: number,
+  org: string,
+  repo: string,
+  issueNumber: number,
 ): Promise<GitHubIssueEvent[]> {
   const events: GitHubIssueEvent[] = [];
   let page = 1;
 
   while (true) {
     const response = await fetch(
-      `https://api.github.com/repos/graphql/graphql-spec/issues/${prNumber}/events?per_page=100&page=${page}`,
+      `https://api.github.com/repos/${org}/${repo}/issues/${issueNumber}/events?per_page=100&page=${page}`,
       {
         headers: {
           Accept: "application/vnd.github+json",
@@ -477,7 +486,7 @@ async function fetchPrEvents(
 
     if (!response.ok) {
       throw new Error(
-        `Failed to fetch issue events for PR #${prNumber}: ${response.status} ${response.statusText}`,
+        `Failed to fetch issue events for ${org}/${repo}#${issueNumber}: ${response.status} ${response.statusText}`,
       );
     }
 
@@ -493,28 +502,76 @@ async function fetchPrEvents(
   return events;
 }
 
-function getTrackedLabelEvents(
+function getTrackedIssueEvents(
   issueEvents: GitHubIssueEvent[],
-  prNumber: number,
-): LabelChangedEvent[] {
-  return issueEvents.flatMap((issueEvent) => {
-    if (issueEvent.event !== "labeled" && issueEvent.event !== "unlabeled") {
-      return [];
+  href: string,
+): Event[] {
+  return issueEvents.flatMap<Event>((issueEvent) => {
+    if (issueEvent.event === "labeled" || issueEvent.event === "unlabeled") {
+      const label = trackedLabelName(issueEvent.label?.name ?? "");
+      if (!label) {
+        return [];
+      }
+      return [
+        {
+          type: issueEvent.event === "labeled" ? "labelAdded" : "labelRemoved",
+          date: issueEvent.created_at,
+          href,
+          actor: issueEvent.actor?.login ?? null,
+          label,
+        } satisfies LabelChangedEvent,
+      ];
     }
-    const label = trackedLabelName(issueEvent.label?.name ?? "");
-    if (!label) {
-      return [];
+    if (issueEvent.event === "edited") {
+      return [
+        {
+          type: "topCommentEdited",
+          date: issueEvent.created_at,
+          href,
+          actor: issueEvent.actor?.login ?? null,
+        } satisfies Event,
+      ];
     }
-    return [
-      {
-        type: issueEvent.event === "labeled" ? "labelAdded" : "labelRemoved",
-        date: issueEvent.created_at,
-        href: `https://github.com/graphql/graphql-spec/pull/${prNumber}`,
-        actor: issueEvent.actor?.login ?? null,
-        label,
-      },
-    ];
+    return [];
   });
+}
+
+function issueKeyFor(org: string, repo: string, number: number): string {
+  return `${org}/${repo}#${number}`;
+}
+
+function parseIssueKey(key: string): {
+  org: string;
+  repo: string;
+  number: number;
+} {
+  const match = key.match(/^([^/]+)\/([^#]+)#(\d+)$/);
+  if (!match) {
+    throw new Error(`Invalid issue key: ${key}`);
+  }
+  return {
+    org: match[1],
+    repo: match[2],
+    number: Number(match[3]),
+  };
+}
+
+function recordIssueHref(org: string, repo: string, number: number): string {
+  return `https://github.com/${org}/${repo}/pull/${number}`;
+}
+
+function sortJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortJson);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, inner]) => [key, sortJson(inner)]),
+    );
+  }
+  return value;
 }
 
 function mergeDiscussion(

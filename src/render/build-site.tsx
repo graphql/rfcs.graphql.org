@@ -586,6 +586,13 @@ function renderActivityEvent(event: Event): React.ReactNode {
           <a href={event.href}>Spec PR</a> closed on {formatDate(event.date)}
         </>
       );
+    case "topCommentEdited":
+      return (
+        <>
+          <a href={event.href}>Top comment</a> edited on {formatDate(event.date)} by{" "}
+          {event.actor ?? "unknown"}
+        </>
+      );
     case "docCreated":
       return (
         <>

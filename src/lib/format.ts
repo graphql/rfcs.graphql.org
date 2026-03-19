@@ -86,6 +86,8 @@ export function summarizeEvent(event: Event): string {
       return `Spec PR merged on ${formatDate(event.date)}`;
     case "prClosed":
       return `Spec PR closed on ${formatDate(event.date)}`;
+    case "topCommentEdited":
+      return `Top comment edited on ${formatDate(event.date)}`;
     case "docCreated":
       return `RFC document created on ${formatDate(event.date)}`;
     case "docUpdated":
@@ -121,6 +123,8 @@ export function eventMarkdown(event: EventBase | Event): string {
       return `- [Spec PR](${event.href}) merged on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
     case "prClosed":
       return `- [Spec PR](${event.href}) closed on ${formatDate(event.date)}`;
+    case "topCommentEdited":
+      return `- [Top comment](${event.href}) edited on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
     case "docCreated":
       return `- [RFC document](${event.href}) created on ${formatDate(event.date)} by ${actorLabel(event.actor)}`;
     case "docUpdated":
