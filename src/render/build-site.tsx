@@ -290,7 +290,7 @@ function ActivityPage({ data }: { data: SiteData }) {
               <div className="activity-month-divider">
                 <span>{month.label}</span>
               </div>
-              <ol className="activity-list">
+              <ul className="activity-list">
                 {month.rfcs.map((rfc) => (
                   <li key={`${month.label}:${rfc.identifier}`}>
                     <article className="activity-card">
@@ -312,7 +312,7 @@ function ActivityPage({ data }: { data: SiteData }) {
                     </article>
                   </li>
                 ))}
-              </ol>
+              </ul>
             </section>
           ))}
         </div>
@@ -392,6 +392,8 @@ function RfcPage(props: { frontmatter: RfcFrontmatter; body: string }) {
   const { frontmatter, body } = props;
   const openedOn = getOpenedOn(frontmatter.events);
   const secondaryDate = getSecondaryDate(frontmatter);
+  const contentBody = stripGeneratedTimeline(stripLeadingTitle(body));
+  const timelineMonths = groupEventsByMonth(frontmatter.events);
 
   return (
     <Layout
@@ -469,7 +471,28 @@ function RfcPage(props: { frontmatter: RfcFrontmatter; body: string }) {
         </aside>
 
         <article className="markdown-body">
-          <Markdown content={stripLeadingTitle(body)} />
+          <Markdown content={contentBody} />
+          <section className="detail-timeline">
+            <h2>Timeline</h2>
+            <div className="activity-groups detail-timeline-groups">
+              {timelineMonths.map((month) => (
+                <section className="activity-month" key={month.label}>
+                  <div className="activity-month-divider">
+                    <span>{month.label}</span>
+                  </div>
+                  <ul className="detail-timeline-list">
+                    {month.events.map((event, index) => (
+                      <li
+                        key={`${month.label}:${event.type}:${event.date}:${index}`}
+                      >
+                        {renderActivityEvent(event)}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          </section>
         </article>
       </section>
     </Layout>
@@ -525,6 +548,10 @@ function stripLeadingTitle(content: string): string {
   return content.replace(/^# [^\n]+\n+/m, "");
 }
 
+function stripGeneratedTimeline(content: string): string {
+  return content.replace(/\n## Timeline[\s\S]*$/m, "").trimEnd();
+}
+
 function eventSentence(event: Event): string {
   if (event.type === "commitsPushed") {
     return `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"} pushed on ${formatDate(event.date)}.`;
@@ -576,8 +603,8 @@ function renderActivityEvent(event: Event): React.ReactNode {
     case "prMerged":
       return (
         <>
-          <a href={event.href}>Spec PR</a> merged on {formatDate(event.date)}{" "}
-          by {event.actor ?? "unknown"}
+          <a href={event.href}>Spec PR</a> merged on {formatDate(event.date)} by{" "}
+          {event.actor ?? "unknown"}
         </>
       );
     case "prClosed":
@@ -589,8 +616,8 @@ function renderActivityEvent(event: Event): React.ReactNode {
     case "topCommentEdited":
       return (
         <>
-          <a href={event.href}>Top comment</a> edited on {formatDate(event.date)} by{" "}
-          {event.actor ?? "unknown"}
+          <a href={event.href}>Top comment</a> edited on{" "}
+          {formatDate(event.date)} by {event.actor ?? "unknown"}
         </>
       );
     case "statusChanged":
@@ -680,6 +707,24 @@ function groupActivityByMonth(activity: ActivityEntry[]) {
   }));
 }
 
+function groupEventsByMonth(events: Event[]) {
+  const months = new Map<string, Event[]>();
+
+  for (const event of events) {
+    const monthLabel = formatMonthLabel(formatDate(event.date));
+    const month = months.get(monthLabel) ?? [];
+    month.push(event);
+    months.set(monthLabel, month);
+  }
+
+  return [...months.entries()].map(([label, monthEvents]) => ({
+    label,
+    events: [...monthEvents].sort(
+      (left, right) => Date.parse(right.date) - Date.parse(left.date),
+    ),
+  }));
+}
+
 function formatMonthLabel(date: string): string {
   const [year, month] = date.split("-");
   const label = new Date(`${year}-${month}-01T00:00:00Z`).toLocaleString(
@@ -724,15 +769,15 @@ function getSecondaryDate(frontmatter: RfcFrontmatter): {
   };
 }
 
-function getLatestActivityTimestamp(rfc: {
-  events: Event[];
-}): number {
+function getLatestActivityTimestamp(rfc: { events: Event[] }): number {
   return getLatestEventTimestamp(rfc);
 }
 
 function latestSummary(rfc: { updatedAt: string; events: Event[] }): string {
   const latestEvent = rfc.events[0];
-  return latestEvent ? summarizeEvent(latestEvent) : `Updated on ${formatDate(rfc.updatedAt)}`;
+  return latestEvent
+    ? summarizeEvent(latestEvent)
+    : `Updated on ${formatDate(rfc.updatedAt)}`;
 }
 
 function getLatestEventTimestamp(rfc: { events: Event[] }): number {

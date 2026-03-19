@@ -313,6 +313,23 @@ h2 {
   margin-top: 0.2rem;
 }
 
+.detail-timeline {
+  margin-top: 2rem;
+}
+
+.detail-timeline-groups {
+  margin-top: 1rem;
+}
+
+.detail-timeline-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.detail-timeline-list li + li {
+  margin-top: 0.5rem;
+}
+
 .markdown-body > *:first-child {
   margin-top: 0;
 }
