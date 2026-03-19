@@ -2,9 +2,9 @@ import type {
   CommitsPushedEvent,
   Event,
   EventBase,
-  LabelChangedEvent,
   RfcSummary,
   Stage,
+  StatusChangedEvent,
   TimelineCommit,
 } from "./types.ts";
 
@@ -76,8 +76,8 @@ export function summarizeEvent(event: Event): string {
   if (event.type === "commitsPushed") {
     return `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"} pushed on ${formatDate(event.date)}`;
   }
-  if (event.type === "labelAdded" || event.type === "labelRemoved") {
-    return summarizeLabelEvent(event as LabelChangedEvent);
+  if (event.type === "statusChanged") {
+    return summarizeStatusEvent(event as StatusChangedEvent);
   }
   switch (event.type) {
     case "prCreated":
@@ -113,8 +113,8 @@ export function eventMarkdown(event: EventBase | Event): string {
   if (event.type === "commitsPushed") {
     return commitsMarkdown(event);
   }
-  if (event.type === "labelAdded" || event.type === "labelRemoved") {
-    return labelMarkdown(event as LabelChangedEvent);
+  if (event.type === "statusChanged") {
+    return statusMarkdown(event as StatusChangedEvent);
   }
   switch (event.type) {
     case "prCreated":
@@ -152,13 +152,12 @@ function commitsMarkdown(event: CommitsPushedEvent): string {
   ].join("\n");
 }
 
-function summarizeLabelEvent(event: LabelChangedEvent): string {
-  return `Label ${event.type === "labelAdded" ? "added" : "removed"}: ${event.label} on ${formatDate(event.date)}`;
+function summarizeStatusEvent(event: StatusChangedEvent): string {
+  return `${event.summary} on ${formatDate(event.date)}`;
 }
 
-function labelMarkdown(event: LabelChangedEvent): string {
-  const verb = event.type === "labelAdded" ? "added" : "removed";
-  return `- Label "${escapeInlineMarkdown(event.label)}" ${verb} on ${formatDate(event.date)}${
+function statusMarkdown(event: StatusChangedEvent): string {
+  return `- ${escapeInlineMarkdown(event.summary)} on ${formatDate(event.date)}${
     event.actor ? ` by ${actorLabel(event.actor)}` : ""
   }`;
 }

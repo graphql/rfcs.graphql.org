@@ -23,11 +23,11 @@ import type {
   ActivityEntry,
   CommitsPushedEvent,
   Event,
-  LabelChangedEvent,
   RfcFrontmatter,
   RfcSummary,
   SiteData,
   Stage,
+  StatusChangedEvent,
 } from "../lib/types.ts";
 
 const execFile = promisify(execFileCallback);
@@ -139,6 +139,63 @@ query GetWgDiscussions($after: String) {
 }
 `;
 
+const GRAPHQL_ISSUE_EVENTS_QUERY = `
+query GetIssueEvents(
+  $org: String!
+  $repo: String!
+  $number: Int!
+  $timelineSince: DateTime
+) {
+  repository(owner: $org, name: $repo) {
+    pullRequest(number: $number) {
+      timelineItems(
+        first: 100
+        since: $timelineSince
+        itemTypes: [LABELED_EVENT, UNLABELED_EVENT]
+      ) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          __typename
+          ... on LabeledEvent {
+            createdAt
+            actor {
+              login
+            }
+            label {
+              name
+            }
+          }
+          ... on UnlabeledEvent {
+            createdAt
+            actor {
+              login
+            }
+            label {
+              name
+            }
+          }
+        }
+      }
+      userContentEdits(first: 100) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          editedAt
+          editor {
+            login
+          }
+        }
+      }
+    }
+  }
+}
+`;
+
 interface RfcRecord {
   identifier: string;
   title: string;
@@ -202,19 +259,56 @@ interface SyncState {
     string,
     {
       updatedAt: string;
-      events: GitHubIssueEvent[];
+      events: CachedIssueEvent[];
     }
   >;
 }
 
-interface GitHubIssueEvent {
-  event: string;
-  created_at: string;
-  actor?: {
-    login?: string | null;
-  } | null;
-  label?: {
-    name?: string | null;
+interface CachedIssueEvent {
+  type: "labeled" | "unlabeled" | "edited";
+  date: string;
+  actor: string | null;
+  label?: string;
+}
+
+interface IssueEventsQueryResult {
+  repository: {
+    pullRequest: {
+      timelineItems: {
+        pageInfo: {
+          hasNextPage: boolean;
+          endCursor: string | null;
+        };
+        nodes: Array<
+          | {
+              __typename: "LabeledEvent";
+              createdAt: string;
+              actor: { login: string | null } | null;
+              label: { name: string | null } | null;
+            }
+          | {
+              __typename: "UnlabeledEvent";
+              createdAt: string;
+              actor: { login: string | null } | null;
+              label: { name: string | null } | null;
+            }
+          | null
+        >;
+      };
+      userContentEdits: {
+        pageInfo: {
+          hasNextPage: boolean;
+          endCursor: string | null;
+        };
+        nodes: Array<
+          | {
+              editedAt: string;
+              editor: { login: string | null } | null;
+            }
+          | null
+        >;
+      };
+    } | null;
   } | null;
 }
 
@@ -282,10 +376,21 @@ async function main(): Promise<void> {
 
 async function loadState(): Promise<SyncState> {
   try {
-    const state = JSON.parse(
-      await fs.readFile(STATE_PATH, "utf8"),
-    ) as SyncState;
-    return state;
+    const state = JSON.parse(await fs.readFile(STATE_PATH, "utf8")) as SyncState;
+    if (!state.issueEvents || typeof state.issueEvents !== "object") {
+      return {};
+    }
+    return {
+      issueEvents: Object.fromEntries(
+        Object.entries(state.issueEvents).flatMap(([key, value]) => {
+          if (!value || typeof value !== "object" || !Array.isArray(value.events)) {
+            return [];
+          }
+          const events = value.events.filter(isCachedIssueEvent);
+          return [[key, { updatedAt: value.updatedAt ?? "", events }]];
+        }),
+      ),
+    };
   } catch {
     return {};
   }
@@ -446,7 +551,7 @@ async function getCachedIssueEvents(
   token: string,
   key: string,
   updatedAt: string,
-): Promise<GitHubIssueEvent[]> {
+): Promise<CachedIssueEvent[]> {
   state.issueEvents ??= {};
   const cached = state.issueEvents[key];
   if (cached && cached.updatedAt === updatedAt) {
@@ -454,7 +559,13 @@ async function getCachedIssueEvents(
   }
 
   const { org, repo, number } = parseIssueKey(key);
-  const events = await fetchIssueEvents(token, org, repo, number);
+  const events = await fetchIssueEvents(
+    token,
+    org,
+    repo,
+    number,
+    cached?.events ?? [],
+  );
   state.issueEvents[key] = {
     updatedAt,
     events,
@@ -467,77 +578,340 @@ async function fetchIssueEvents(
   org: string,
   repo: string,
   issueNumber: number,
-): Promise<GitHubIssueEvent[]> {
-  const events: GitHubIssueEvent[] = [];
-  let page = 1;
+  previousEvents: CachedIssueEvent[],
+): Promise<CachedIssueEvent[]> {
+  const timelineSince = getLatestCachedIssueEventDate(previousEvents, [
+    "labeled",
+    "unlabeled",
+  ]);
+  const latestTopCommentEditAt = getLatestCachedIssueEventDate(previousEvents, [
+    "edited",
+  ]);
 
-  while (true) {
-    const response = await fetch(
-      `https://api.github.com/repos/${org}/${repo}/issues/${issueNumber}/events?per_page=100&page=${page}`,
-      {
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: `Bearer ${token}`,
-          "X-GitHub-Api-Version": "2022-11-28",
-          "User-Agent": "rfcs.graphql.org-sync",
-        },
-      },
-    );
+  const result = await graphql<IssueEventsQueryResult>(GRAPHQL_ISSUE_EVENTS_QUERY, {
+    headers: {
+      authorization: `token ${token}`,
+    },
+    org,
+    repo,
+    number: issueNumber,
+    timelineSince,
+  });
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch issue events for ${org}/${repo}#${issueNumber}: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const pageEvents = (await response.json()) as GitHubIssueEvent[];
-    events.push(...pageEvents);
-
-    if (pageEvents.length < 100) {
-      break;
-    }
-    page += 1;
+  const pullRequest = result.repository?.pullRequest;
+  if (!pullRequest) {
+    return previousEvents;
   }
 
-  return events;
+  const nextEvents: CachedIssueEvent[] = [];
+
+  for (const timelineItem of pullRequest.timelineItems.nodes) {
+    if (!timelineItem) {
+      continue;
+    }
+    if (
+      timelineItem.__typename !== "LabeledEvent" &&
+      timelineItem.__typename !== "UnlabeledEvent"
+    ) {
+      continue;
+    }
+    const label = trackedLabelName(timelineItem.label?.name ?? "");
+    if (!label) {
+      continue;
+    }
+    nextEvents.push({
+      type: timelineItem.__typename === "LabeledEvent" ? "labeled" : "unlabeled",
+      date: timelineItem.createdAt,
+      actor: timelineItem.actor?.login ?? null,
+      label,
+    });
+  }
+
+  for (const contentEdit of pullRequest.userContentEdits.nodes) {
+    if (!contentEdit) {
+      continue;
+    }
+    if (
+      latestTopCommentEditAt &&
+      Date.parse(contentEdit.editedAt) <= Date.parse(latestTopCommentEditAt)
+    ) {
+      continue;
+    }
+    nextEvents.push({
+      type: "edited",
+      date: contentEdit.editedAt,
+      actor: contentEdit.editor?.login ?? null,
+    });
+  }
+
+  return mergeCachedIssueEvents(previousEvents, nextEvents);
 }
 
 function getTrackedIssueEvents(
-  issueEvents: GitHubIssueEvent[],
+  issueEvents: CachedIssueEvent[],
   href: string,
 ): Event[] {
-  return issueEvents.flatMap<Event>((issueEvent) => {
-    if (issueEvent.event === "labeled" || issueEvent.event === "unlabeled") {
-      const label = trackedLabelName(issueEvent.label?.name ?? "");
-      if (!label) {
-        return [];
-      }
-      return [
-        {
-          type: issueEvent.event === "labeled" ? "labelAdded" : "labelRemoved",
-          date: issueEvent.created_at,
-          href,
-          actor: issueEvent.actor?.login ?? null,
-          label,
-        } satisfies LabelChangedEvent,
-      ];
+  const byDay = new Map<string, CachedIssueEvent[]>();
+  const otherEvents: Event[] = [];
+
+  for (const issueEvent of issueEvents) {
+    if (issueEvent.type === "labeled" || issueEvent.type === "unlabeled") {
+      const day = formatDate(issueEvent.date);
+      const events = byDay.get(day) ?? [];
+      events.push(issueEvent);
+      byDay.set(day, events);
+      continue;
     }
-    if (issueEvent.event === "edited") {
-      return [
-        {
-          type: "topCommentEdited",
-          date: issueEvent.created_at,
-          href,
-          actor: issueEvent.actor?.login ?? null,
-        } satisfies Event,
-      ];
+    if (issueEvent.type === "edited") {
+      otherEvents.push({
+        type: "topCommentEdited",
+        date: issueEvent.date,
+        href,
+        actor: issueEvent.actor,
+      } satisfies Event);
     }
-    return [];
-  });
+  }
+
+  const statusEvents = [...byDay.entries()]
+    .map(([day, dayEvents]) => summarizeTrackedLabelEvents(day, dayEvents, href))
+    .filter((event): event is StatusChangedEvent => event != null);
+
+  return [...statusEvents, ...otherEvents].sort(
+    (left, right) => Date.parse(right.date) - Date.parse(left.date),
+  );
+}
+
+function summarizeTrackedLabelEvents(
+  day: string,
+  issueEvents: CachedIssueEvent[],
+  href: string,
+): StatusChangedEvent | null {
+  const tracked = issueEvents
+    .map((issueEvent) => ({
+      action: issueEvent.type,
+      actor: issueEvent.actor,
+      createdAt: issueEvent.date,
+      label: issueEvent.label ?? null,
+    }))
+    .filter(
+      (
+        issueEvent,
+      ): issueEvent is {
+        action: "labeled" | "unlabeled";
+        actor: string | null;
+        createdAt: string;
+        label: string;
+      } => issueEvent.action !== "edited" && issueEvent.label != null,
+    )
+    .sort(
+      (left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt),
+    );
+
+  if (tracked.length === 0) {
+    return null;
+  }
+
+  const actor = tracked[tracked.length - 1]?.actor ?? null;
+  const summary =
+    summarizeStageTransition(tracked) ??
+    summarizeStageRemoval(tracked) ??
+    summarizeStaleTransition(tracked) ??
+    summarizeNextStageTransition(tracked);
+
+  if (!summary) {
+    return null;
+  }
+
+  return {
+    type: "statusChanged",
+    date: day,
+    href,
+    actor,
+    summary,
+  };
+}
+
+function summarizeStageTransition(
+  issueEvents: Array<{
+    action: "labeled" | "unlabeled";
+    actor: string | null;
+    createdAt: string;
+    label: string;
+  }>,
+): string | null {
+  const addedStage = issueEvents
+    .filter((issueEvent) => issueEvent.action === "labeled")
+    .map((issueEvent) => issueEvent.label)
+    .find(isStageLikeLabel);
+  if (!addedStage) {
+    return null;
+  }
+
+  switch (addedStage) {
+    case "RFC 0":
+    case "RFC 1":
+    case "RFC 2":
+    case "RFC 3":
+      return `Advanced to ${addedStage}`;
+    case "RFC X / Superseded":
+      return "Marked as Superseded";
+    case "RFC X":
+      return "Marked as Rejected";
+    default:
+      return null;
+  }
+}
+
+function summarizeStageRemoval(
+  issueEvents: Array<{
+    action: "labeled" | "unlabeled";
+    actor: string | null;
+    createdAt: string;
+    label: string;
+  }>,
+): string | null {
+  const removedStage = issueEvents
+    .filter((issueEvent) => issueEvent.action === "unlabeled")
+    .map((issueEvent) => issueEvent.label)
+    .find(isStageLikeLabel);
+  if (!removedStage) {
+    return null;
+  }
+  return null;
+}
+
+function summarizeStaleTransition(
+  issueEvents: Array<{
+    action: "labeled" | "unlabeled";
+    actor: string | null;
+    createdAt: string;
+    label: string;
+  }>,
+): string | null {
+  const staleAdded = issueEvents.some(
+    (issueEvent) =>
+      issueEvent.action === "labeled" && issueEvent.label === "Stale",
+  );
+  if (staleAdded) {
+    return "Marked as Stale";
+  }
+
+  const staleRemoved = issueEvents.some(
+    (issueEvent) =>
+      issueEvent.action === "unlabeled" && issueEvent.label === "Stale",
+  );
+  if (staleRemoved) {
+    return "Marked as Active";
+  }
+
+  return null;
+}
+
+function summarizeNextStageTransition(
+  issueEvents: Array<{
+    action: "labeled" | "unlabeled";
+    actor: string | null;
+    createdAt: string;
+    label: string;
+  }>,
+): string | null {
+  const nextStageAdded = issueEvents.some(
+    (issueEvent) =>
+      issueEvent.action === "labeled" && issueEvent.label === "Next stage",
+  );
+  if (nextStageAdded) {
+    return "Marked as Ready for Next Stage";
+  }
+  return null;
+}
+
+function isStageLikeLabel(label: string): boolean {
+  return (
+    label === "RFC 0" ||
+    label === "RFC 1" ||
+    label === "RFC 2" ||
+    label === "RFC 3" ||
+    label === "RFC X" ||
+    label === "RFC X / Superseded"
+  );
 }
 
 function issueKeyFor(org: string, repo: string, number: number): string {
   return `${org}/${repo}#${number}`;
+}
+
+function mergeCachedIssueEvents(
+  previousEvents: CachedIssueEvent[],
+  nextEvents: CachedIssueEvent[],
+): CachedIssueEvent[] {
+  const deduped = new Map<string, CachedIssueEvent>();
+  for (const issueEvent of [...previousEvents, ...nextEvents]) {
+    deduped.set(cachedIssueEventKey(issueEvent), issueEvent);
+  }
+  return [...deduped.values()].sort(compareCachedIssueEvents);
+}
+
+function cachedIssueEventKey(issueEvent: CachedIssueEvent): string {
+  return [
+    issueEvent.type,
+    issueEvent.date,
+    issueEvent.actor ?? "",
+    issueEvent.label ?? "",
+  ].join("|");
+}
+
+function compareCachedIssueEvents(
+  left: CachedIssueEvent,
+  right: CachedIssueEvent,
+): number {
+  const dateDelta = Date.parse(left.date) - Date.parse(right.date);
+  if (dateDelta !== 0) {
+    return dateDelta;
+  }
+  const typeDelta = left.type.localeCompare(right.type);
+  if (typeDelta !== 0) {
+    return typeDelta;
+  }
+  const actorDelta = (left.actor ?? "").localeCompare(right.actor ?? "");
+  if (actorDelta !== 0) {
+    return actorDelta;
+  }
+  return (left.label ?? "").localeCompare(right.label ?? "");
+}
+
+function getLatestCachedIssueEventDate(
+  issueEvents: CachedIssueEvent[],
+  types: CachedIssueEvent["type"][],
+): string | null {
+  const dates = issueEvents
+    .filter((issueEvent) => types.includes(issueEvent.type))
+    .map((issueEvent) => issueEvent.date)
+    .sort((left, right) => Date.parse(right) - Date.parse(left));
+  return dates[0] ?? null;
+}
+
+function isCachedIssueEvent(value: unknown): value is CachedIssueEvent {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const issueEvent = value as Partial<CachedIssueEvent>;
+  if (
+    issueEvent.type !== "labeled" &&
+    issueEvent.type !== "unlabeled" &&
+    issueEvent.type !== "edited"
+  ) {
+    return false;
+  }
+  if (typeof issueEvent.date !== "string") {
+    return false;
+  }
+  if (issueEvent.actor != null && typeof issueEvent.actor !== "string") {
+    return false;
+  }
+  if (issueEvent.label != null && typeof issueEvent.label !== "string") {
+    return false;
+  }
+  return true;
 }
 
 function parseIssueKey(key: string): {

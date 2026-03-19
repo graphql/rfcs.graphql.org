@@ -593,6 +593,13 @@ function renderActivityEvent(event: Event): React.ReactNode {
           {event.actor ?? "unknown"}
         </>
       );
+    case "statusChanged":
+      return (
+        <>
+          <a href={event.href}>{event.summary}</a> on {formatDate(event.date)}
+          {event.actor ? ` by ${event.actor}` : ""}
+        </>
+      );
     case "docCreated":
       return (
         <>
