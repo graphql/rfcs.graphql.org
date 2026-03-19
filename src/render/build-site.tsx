@@ -181,7 +181,9 @@ function HomePage({ data }: { data: SiteData }) {
       if (nextStageDelta !== 0) {
         return nextStageDelta;
       }
-      return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+      return (
+        getLatestActivityTimestamp(right) - getLatestActivityTimestamp(left)
+      );
     });
 
   return (
@@ -695,6 +697,18 @@ function getSecondaryDate(frontmatter: RfcFrontmatter): {
     label: "Updated on",
     value: formatDate(frontmatter.updatedAt),
   };
+}
+
+function getLatestActivityTimestamp(rfc: {
+  updatedAt: string;
+  events: Event[];
+}): number {
+  const latestEvent = rfc.events[0]?.date;
+  console.log({ latestEvent, ua: rfc.updatedAt });
+  return Math.max(
+    Date.parse(rfc.updatedAt),
+    latestEvent ? Date.parse(latestEvent) : Number.NEGATIVE_INFINITY,
+  );
 }
 
 async function writePage(
