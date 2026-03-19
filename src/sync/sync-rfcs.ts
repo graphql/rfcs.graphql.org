@@ -340,6 +340,22 @@ function mergeSpecPr(records: Map<string, RfcRecord>, pr: SpecPrNode): void {
     actor: pr.author?.login ?? null,
   });
 
+  if (pr.mergedAt) {
+    addEvent(record, {
+      type: "prMerged",
+      date: pr.mergedAt,
+      href: record.prUrl,
+      actor: pr.mergedBy?.login ?? null,
+    });
+  } else if (pr.closedAt) {
+    addEvent(record, {
+      type: "prClosed",
+      date: pr.closedAt,
+      href: record.prUrl,
+      actor: null,
+    });
+  }
+
   const commitsByDate = new Map<string, CommitsPushedEvent["commits"]>();
   for (const node of pr.commits.nodes) {
     const commit = node?.commit;

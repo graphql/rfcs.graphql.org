@@ -16,6 +16,8 @@ export interface EventCore {
 export interface EventBase extends EventCore {
   type:
     | "prCreated"
+    | "prMerged"
+    | "prClosed"
     | "docCreated"
     | "docUpdated"
     | "wgDiscussionCreated"

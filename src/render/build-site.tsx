@@ -181,9 +181,7 @@ function HomePage({ data }: { data: SiteData }) {
       if (nextStageDelta !== 0) {
         return nextStageDelta;
       }
-      return (
-        getLatestActivityTimestamp(right) - getLatestActivityTimestamp(left)
-      );
+      return getLatestEventTimestamp(right) - getLatestEventTimestamp(left);
     });
 
   return (
@@ -257,7 +255,7 @@ function HomePage({ data }: { data: SiteData }) {
                   <td>
                     <a href={`/rfcs/${rfc.identifier}/`}>{rfc.title}</a>
                   </td>
-                  <td>{summarizeEvent(rfc.events[0])}</td>
+                  <td>{latestSummary(rfc)}</td>
                 </tr>
               ))}
             </tbody>
@@ -379,7 +377,7 @@ function AllRfcsPage({ data }: { data: SiteData }) {
                   <td>
                     <a href={`/rfcs/${rfc.identifier}/`}>{rfc.title}</a>
                   </td>
-                  <td>{summarizeEvent(rfc.events[0])}</td>
+                  <td>{latestSummary(rfc)}</td>
                 </tr>
               ))}
             </tbody>
@@ -575,6 +573,19 @@ function renderActivityEvent(event: Event): React.ReactNode {
           by {event.actor ?? "unknown"}
         </>
       );
+    case "prMerged":
+      return (
+        <>
+          <a href={event.href}>Spec PR</a> merged on {formatDate(event.date)}{" "}
+          by {event.actor ?? "unknown"}
+        </>
+      );
+    case "prClosed":
+      return (
+        <>
+          <a href={event.href}>Spec PR</a> closed on {formatDate(event.date)}
+        </>
+      );
     case "docCreated":
       return (
         <>
@@ -700,15 +711,19 @@ function getSecondaryDate(frontmatter: RfcFrontmatter): {
 }
 
 function getLatestActivityTimestamp(rfc: {
-  updatedAt: string;
   events: Event[];
 }): number {
+  return getLatestEventTimestamp(rfc);
+}
+
+function latestSummary(rfc: { updatedAt: string; events: Event[] }): string {
+  const latestEvent = rfc.events[0];
+  return latestEvent ? summarizeEvent(latestEvent) : `Updated on ${formatDate(rfc.updatedAt)}`;
+}
+
+function getLatestEventTimestamp(rfc: { events: Event[] }): number {
   const latestEvent = rfc.events[0]?.date;
-  console.log({ latestEvent, ua: rfc.updatedAt });
-  return Math.max(
-    Date.parse(rfc.updatedAt),
-    latestEvent ? Date.parse(latestEvent) : Number.NEGATIVE_INFINITY,
-  );
+  return latestEvent ? Date.parse(latestEvent) : Number.NEGATIVE_INFINITY;
 }
 
 async function writePage(
