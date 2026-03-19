@@ -198,11 +198,11 @@ interface DiscussionNode {
 }
 
 interface SyncState {
-  prLabelEvents?: Record<
+  prEvents?: Record<
     string,
     {
       updatedAt: string;
-      events: LabelChangedEvent[];
+      events: GitHubIssueEvent[];
     }
   >;
 }
@@ -232,7 +232,7 @@ async function main(): Promise<void> {
 
   for (const pr of await fetchAllSpecPrs(token)) {
     mergeSpecPr(records, pr);
-    for (const event of await getCachedPrLabelEvents(state, token, pr)) {
+    for (const event of getTrackedLabelEvents(await getCachedPrEvents(state, token, pr), pr.number)) {
       const record = records.get(String(pr.number));
       if (record) {
         addEvent(record, event);
@@ -278,13 +278,18 @@ async function main(): Promise<void> {
 
 async function loadState(): Promise<SyncState> {
   try {
-    return JSON.parse(await fs.readFile(STATE_PATH, "utf8")) as SyncState;
+    const state = JSON.parse(await fs.readFile(STATE_PATH, "utf8")) as SyncState & {
+      prLabelEvents?: unknown;
+    };
+    delete state.prLabelEvents;
+    return state;
   } catch {
     return {};
   }
 }
 
 async function saveState(state: SyncState): Promise<void> {
+  delete (state as SyncState & { prLabelEvents?: unknown }).prLabelEvents;
   await fs.writeFile(STATE_PATH, JSON.stringify(state, null, 2) + "\n", "utf8");
 }
 
@@ -430,31 +435,31 @@ function mergeSpecPr(records: Map<string, RfcRecord>, pr: SpecPrNode): void {
   }
 }
 
-async function getCachedPrLabelEvents(
+async function getCachedPrEvents(
   state: SyncState,
   token: string,
   pr: SpecPrNode,
-): Promise<LabelChangedEvent[]> {
-  state.prLabelEvents ??= {};
+): Promise<GitHubIssueEvent[]> {
+  state.prEvents ??= {};
   const key = String(pr.number);
-  const cached = state.prLabelEvents[key];
+  const cached = state.prEvents[key];
   if (cached && cached.updatedAt === pr.updatedAt) {
     return cached.events;
   }
 
-  const events = await fetchPrLabelEvents(token, pr.number);
-  state.prLabelEvents[key] = {
+  const events = await fetchPrEvents(token, pr.number);
+  state.prEvents[key] = {
     updatedAt: pr.updatedAt,
     events,
   };
   return events;
 }
 
-async function fetchPrLabelEvents(
+async function fetchPrEvents(
   token: string,
   prNumber: number,
-): Promise<LabelChangedEvent[]> {
-  const events: LabelChangedEvent[] = [];
+): Promise<GitHubIssueEvent[]> {
+  const events: GitHubIssueEvent[] = [];
   let page = 1;
 
   while (true) {
@@ -477,22 +482,7 @@ async function fetchPrLabelEvents(
     }
 
     const pageEvents = (await response.json()) as GitHubIssueEvent[];
-    for (const issueEvent of pageEvents) {
-      if (issueEvent.event !== "labeled" && issueEvent.event !== "unlabeled") {
-        continue;
-      }
-      const label = trackedLabelName(issueEvent.label?.name ?? "");
-      if (!label) {
-        continue;
-      }
-      events.push({
-        type: issueEvent.event === "labeled" ? "labelAdded" : "labelRemoved",
-        date: issueEvent.created_at,
-        href: `https://github.com/graphql/graphql-spec/pull/${prNumber}`,
-        actor: issueEvent.actor?.login ?? null,
-        label,
-      });
-    }
+    events.push(...pageEvents);
 
     if (pageEvents.length < 100) {
       break;
@@ -501,6 +491,30 @@ async function fetchPrLabelEvents(
   }
 
   return events;
+}
+
+function getTrackedLabelEvents(
+  issueEvents: GitHubIssueEvent[],
+  prNumber: number,
+): LabelChangedEvent[] {
+  return issueEvents.flatMap((issueEvent) => {
+    if (issueEvent.event !== "labeled" && issueEvent.event !== "unlabeled") {
+      return [];
+    }
+    const label = trackedLabelName(issueEvent.label?.name ?? "");
+    if (!label) {
+      return [];
+    }
+    return [
+      {
+        type: issueEvent.event === "labeled" ? "labelAdded" : "labelRemoved",
+        date: issueEvent.created_at,
+        href: `https://github.com/graphql/graphql-spec/pull/${prNumber}`,
+        actor: issueEvent.actor?.login ?? null,
+        label,
+      },
+    ];
+  });
 }
 
 function mergeDiscussion(
