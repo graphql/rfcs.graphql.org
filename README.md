@@ -1,3 +1,6 @@
+| Auto-publish deactivates after 60 days of inactivity. Last bumped: 2026-06-18 |
+| ----------------------------------------------------------------------------- |
+
 # rfcs.graphql.org
 
 RFC tracker for GraphQL. Gathers together RFCs from:
