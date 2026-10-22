@@ -1,4 +1,4 @@
-| Auto-publish deactivates after 60 days of inactivity. Last bumped: 2026-10-08 |
+| Auto-publish deactivates after 60 days of inactivity. Last bumped: 2026-10-22 |
 | ----------------------------------------------------------------------------- |
 
 # rfcs.graphql.org
