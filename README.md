@@ -48,6 +48,11 @@ this repository.
 
 `yarn build` runs the full pipeline and produces a deployable `dist/`.
 
+## Local preview
+
+Run `yarn build-site && yarn serve`, then open <http://127.0.0.1:8000>.
+`yarn serve` uses Python 3's built-in HTTP server to serve `dist/`.
+
 ## Output
 
 - `generated/site.json`
