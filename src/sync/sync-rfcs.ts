@@ -5,6 +5,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { execFile as execFileCallback } from "node:child_process";
 import YAML from "yaml";
+import { groupIds } from "../lib/meetings.ts";
+import { collectMeetings } from "./meetings.ts";
 import {
   escapeInlineMarkdown,
   eventMarkdown,
@@ -319,7 +321,8 @@ async function main(): Promise<void> {
   }
 
   await fs.mkdir(RFCS_DIR, { recursive: true });
-  await ensureGraphqlWgCheckout();
+  await fs.mkdir(TEMP_DIR, { recursive: true });
+  await Promise.all(groupIds.map(ensureWgCheckout));
   const state = await loadState();
 
   const records = new Map<string, RfcRecord>();
@@ -341,7 +344,10 @@ async function main(): Promise<void> {
     mergeDiscussion(records, discussion);
   }
   await mergeDocuments(records);
-  await addWgMentions(records);
+  const meetings = await collectMeetings(
+    (group) => path.join(TEMP_DIR, group),
+    records.values(),
+  );
 
   const summaries = await writeGeneratedMarkdown(records);
   const activity = summaries
@@ -364,6 +370,7 @@ async function main(): Promise<void> {
     totalCount: summaries.length,
     rfcs: summaries,
     activity,
+    meetings,
   };
 
   await fs.writeFile(
@@ -404,19 +411,21 @@ async function saveState(state: SyncState): Promise<void> {
   );
 }
 
-async function ensureGraphqlWgCheckout(): Promise<void> {
-  await fs.mkdir(TEMP_DIR, { recursive: true });
-  if (!existsSync(WG_DIR)) {
+async function ensureWgCheckout(group: string): Promise<void> {
+  const directory = path.join(TEMP_DIR, group);
+  if (!existsSync(directory)) {
     await run("git", [
       "clone",
-      "https://github.com/graphql/graphql-wg.git",
-      WG_DIR,
+      "--branch",
+      "main",
+      `https://github.com/graphql/${group}.git`,
+      directory,
     ]);
     return;
   }
-  await run("git", ["-C", WG_DIR, "fetch", "--all", "--prune"]);
-  await run("git", ["-C", WG_DIR, "checkout", "main"]);
-  await run("git", ["-C", WG_DIR, "pull", "--ff-only"]);
+  await run("git", ["-C", directory, "fetch", "origin", "main"]);
+  await run("git", ["-C", directory, "checkout", "main"]);
+  await run("git", ["-C", directory, "merge", "--ff-only", "FETCH_HEAD"]);
 }
 
 async function fetchAllSpecPrs(token: string): Promise<SpecPrNode[]> {
@@ -1065,39 +1074,6 @@ async function mergeDocuments(records: Map<string, RfcRecord>): Promise<void> {
   }
 }
 
-async function addWgMentions(records: Map<string, RfcRecord>): Promise<void> {
-  for (const group of ["agendas", "notes"]) {
-    const baseDir = path.join(WG_DIR, group);
-    if (!existsSync(baseDir)) {
-      continue;
-    }
-    for (const filePath of await walkMarkdownFiles(baseDir)) {
-      const content = await fs.readFile(filePath, "utf8");
-      const eventType = group === "agendas" ? "wgAgenda" : "wgNotes";
-      const date = getDateFromPath(filePath);
-      const relative = path
-        .relative(WG_DIR, filePath)
-        .split(path.sep)
-        .join("/");
-      const href = `https://github.com/graphql/graphql-wg/blob/main/${relative}`;
-      for (const match of content.matchAll(
-        /https:\/\/github\.com\/graphql\/graphql-spec\/pull\/([0-9]+)/gi,
-      )) {
-        const record = records.get(match[1]);
-        if (!record) {
-          continue;
-        }
-        addEvent(record, {
-          type: eventType,
-          date,
-          href,
-          actor: null,
-        });
-      }
-    }
-  }
-}
-
 async function writeGeneratedMarkdown(
   records: Map<string, RfcRecord>,
 ): Promise<RfcSummary[]> {
@@ -1293,40 +1269,6 @@ function eventSignature(event: Event): string {
 
 function pruneMarkdown(markdown: string): string {
   return markdown.replace(/\r\n/g, "\n").trim();
-}
-
-async function walkMarkdownFiles(dir: string): Promise<string[]> {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const files = await Promise.all(
-    entries.map(async (entry) => {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        return walkMarkdownFiles(fullPath);
-      }
-      if (
-        entry.isFile() &&
-        entry.name.endsWith(".md") &&
-        entry.name !== "README.md"
-      ) {
-        return [fullPath];
-      }
-      return [];
-    }),
-  );
-  return files.flat();
-}
-
-function getDateFromPath(filePath: string): string {
-  const normalized = filePath.replace(/[^0-9-]+/g, "-").replace(/-+/g, "-");
-  const full = normalized.match(/([0-9]{4}-[0-9]{2}-[0-9]{2})(?![0-9])/);
-  if (full) {
-    return full[1];
-  }
-  const partial = normalized.match(/([0-9]{4})-([0-9]{2})(?![0-9])/);
-  if (partial) {
-    return `${partial[1]}-${partial[2]}-01`;
-  }
-  return new Date().toISOString().slice(0, 10);
 }
 
 function maxDate(left: string, right: string): string {

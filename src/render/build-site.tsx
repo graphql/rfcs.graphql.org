@@ -12,7 +12,15 @@ import {
   stageWeight,
   summarizeEvent,
 } from "../lib/format.ts";
+import {
+  groupIds,
+  groupName,
+  meetingHref,
+  meetingStatus,
+} from "../lib/meetings.ts";
 import type {
+  Meeting,
+  MeetingSource,
   ActivityEntry,
   Event,
   RfcFrontmatter,
@@ -90,6 +98,8 @@ async function main(): Promise<void> {
     },
   );
 
+  await writeMeetings(data.meetings ?? [], data.generatedAt.slice(0, 10));
+
   await Promise.all(
     data.rfcs.map(async (summary) => {
       const markdownPath = path.join(
@@ -106,7 +116,11 @@ async function main(): Promise<void> {
           assertSafeFilesystemComponent(summary.identifier),
           "index.html",
         ),
-        <RfcPage body={parsed.content} frontmatter={frontmatter} />,
+        <RfcPage
+          body={parsed.content}
+          frontmatter={frontmatter}
+          meetings={data.meetings ?? []}
+        />,
         {
           title: `${summary.title} | GraphQL RFC Tracker`,
           description: summary.description,
@@ -154,6 +168,7 @@ function Layout(props: {
             <nav className="site-nav">
               <a href="/rfcs/">All RFCs</a>
               <a href="/activity/">Activity</a>
+              <a href="/meetings/">Meetings</a>
               <a href="https://github.com/graphql/graphql-spec">graphql-spec</a>
               <a href="https://github.com/graphql/graphql-wg">graphql-wg</a>
             </nav>
@@ -255,8 +270,240 @@ function HomePage({ data }: { data: SiteData }) {
   );
 }
 
+function MeetingLink({ meeting }: { meeting: Meeting }) {
+  const title = `${groupName(meeting.group)} · ${meeting.date}`;
+  return (
+    <>
+      <a href={meetingHref(meeting)}>
+        {meeting.cancelled ? <del>{title}</del> : title}
+      </a>
+      {" · "}
+      {meetingStatus(meeting)}
+    </>
+  );
+}
+
+function MeetingList({
+  title,
+  meetings,
+}: {
+  title: string;
+  meetings: Meeting[];
+}) {
+  if (!meetings.length) return null;
+  return (
+    <section className="section-block">
+      <h2>{title}</h2>
+      <ul className="link-list">
+        {meetings.map((meeting) => (
+          <li key={meetingHref(meeting)}>
+            <MeetingLink meeting={meeting} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+async function writeMeetings(meetings: Meeting[], today: string) {
+  const write = (pathname: string, title: string, body: React.ReactNode) => {
+    const relative = assertSafeFilesystemPath(pathname.slice(1, -1));
+    const meta = { pathname, title, description: title };
+    return writePage(
+      path.join(DIST_DIR, relative, "index.html"),
+      <Layout {...meta}>
+        <section className="hero hero-compact">
+          <h1>{title}</h1>
+        </section>
+        {body}
+      </Layout>,
+      meta,
+    );
+  };
+  const archive = (entries: Meeting[]) => (
+    <>
+      <MeetingList
+        title="Scheduled meetings"
+        meetings={entries.filter((meeting) => meeting.date >= today)}
+      />
+      <MeetingList
+        title="Past meetings"
+        meetings={entries.filter((meeting) => meeting.date < today).reverse()}
+      />
+    </>
+  );
+
+  await write(
+    "/meetings/",
+    "Working group meetings",
+    <>
+      <ul className="link-list">
+        {groupIds.map((group) => (
+          <li key={group}>
+            <a href={`/meetings/${group}/`}>{groupName(group)}</a>
+          </li>
+        ))}
+      </ul>
+      {archive(meetings)}
+    </>,
+  );
+  const navigable = meetings.filter((meeting) => !meeting.cancelled);
+  for (const group of groupIds) {
+    const groupMeetings = meetings.filter((meeting) => meeting.group === group);
+    const groupNavigation = navigable.filter(
+      (meeting) => meeting.group === group,
+    );
+    const groupHref = `/meetings/${group}/`;
+    await write(
+      groupHref,
+      groupName(group),
+      <>
+        <a href="/meetings/">All working group meetings</a>
+        {archive(groupMeetings)}
+      </>,
+    );
+    for (const meeting of groupMeetings) {
+      const neighbors = [
+        ["Previous in this working group", groupNavigation, -1],
+        ["Next in this working group", groupNavigation, 1],
+        ["Previous across all groups", navigable, -1],
+        ["Next across all groups", navigable, 1],
+      ] as const;
+      await write(
+        meetingHref(meeting),
+        `${groupName(group)} · ${meeting.date}`,
+        <>
+          <p>
+            <a href={groupHref}>{groupName(group)} meetings</a> ·{" "}
+            {meetingStatus(meeting)}
+          </p>
+          {meeting.notes.map((note, index) => (
+            <MeetingDocument
+              key={note.section}
+              source={note}
+              title={
+                note.href.includes("/summary-")
+                  ? "Zoom summary"
+                  : index === 0
+                    ? "Notes"
+                    : "Additional notes"
+              }
+            />
+          ))}
+          <MeetingDocument source={meeting.agenda} title="Agenda" />
+          {meeting.references.length > 0 && (
+            <section className="section-block">
+              <h2>Tracked RFCs</h2>
+              <ul className="link-list">
+                {meeting.references.map(({ identifier, section }) => (
+                  <li key={identifier}>
+                    <a href={`/rfcs/${assertSafeURLComponent(identifier)}/`}>
+                      {formatIdentifier(identifier)}
+                    </a>
+                    {" · "}
+                    {section ? (
+                      <a href={`#${section}`}>Discussed</a>
+                    ) : (
+                      "On the agenda"
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {!meeting.cancelled && (
+            <nav aria-label="Meeting navigation">
+              <ul className="link-list">
+                {neighbors.map(([label, entries, offset]) => {
+                  const destination =
+                    entries[entries.indexOf(meeting) + offset];
+                  return (
+                    destination && (
+                      <li key={label}>
+                        <a href={meetingHref(destination)}>
+                          {label} · {groupName(destination.group)},{" "}
+                          {destination.date}
+                        </a>
+                      </li>
+                    )
+                  );
+                })}
+              </ul>
+            </nav>
+          )}
+        </>,
+      );
+    }
+  }
+}
+
+function MeetingDocument({
+  source,
+  title,
+}: {
+  source: MeetingSource;
+  title: string;
+}) {
+  return (
+    <section className="section-block markdown-body" id={source.section}>
+      <h2>{title}</h2>
+      <p>
+        <a href={source.href}>View {title.toLowerCase()} on GitHub</a>
+      </p>
+      <Markdown content={source.content} source={source} />
+    </section>
+  );
+}
+
+function RfcMeetings({
+  meetings,
+  identifier,
+}: {
+  meetings: Meeting[];
+  identifier: string;
+}) {
+  const entries = meetings
+    .flatMap((meeting) => {
+      const reference = meeting.references.find(
+        (ref) => ref.identifier === identifier,
+      );
+      return reference ? [{ meeting, section: reference.section }] : [];
+    })
+    .reverse();
+  if (!entries.length) return null;
+  return (
+    <section className="detail-timeline">
+      <h2>Working group meetings</h2>
+      <ul className="detail-timeline-list">
+        {entries.map(({ meeting, section }) => (
+          <li key={meetingHref(meeting)}>
+            <a href={meetingHref(meeting) + (section ? `#${section}` : "")}>
+              {groupName(meeting.group)} · {meeting.date}
+            </a>
+            {" · "}
+            {section ? "Discussed" : "On the agenda"}
+            {meeting.cancelled && " · Cancelled"}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function ActivityPage({ data }: { data: SiteData }) {
+  const today = (data.generatedAt ?? new Date().toISOString()).slice(0, 10);
+  const meetings = data.meetings ?? [];
+  const past = meetings.filter((meeting) => meeting.date < today).reverse();
+  const upcoming = meetings.filter((meeting) => meeting.date >= today);
   const activityGroups = groupActivityByMonth(data.activity);
+  const monthKeys = [
+    ...new Set([
+      ...activityGroups.map((month) => month.key),
+      ...past.map((meeting) => meeting.date.slice(0, 7)),
+    ]),
+  ]
+    .sort()
+    .reverse();
 
   return (
     <Layout
@@ -269,19 +516,29 @@ function ActivityPage({ data }: { data: SiteData }) {
         <h1>Recent activity</h1>
         <p className="lede">
           A merged activity feed for spec PRs, RFC document history, and working
-          group mentions.
+          group meetings.
         </p>
       </section>
       <section className="section-block">
         <div className="activity-groups">
-          {activityGroups.map((month) => (
-            <section className="activity-month" key={month.label}>
-              <div className="activity-month-divider">
-                <span>{month.label}</span>
-              </div>
-              <ul className="activity-list">
-                {month.rfcs.map((rfc) => (
-                  <li key={`${month.label}:${rfc.identifier}`}>
+          <MeetingList title="Scheduled meetings" meetings={upcoming} />
+          {monthKeys.map((key) => {
+            const month = activityGroups.find((group) => group.key === key);
+            const cards = [
+              ...past
+                .filter((meeting) => meeting.date.startsWith(key))
+                .map((meeting) => ({
+                  date: meeting.date,
+                  element: (
+                    <li className="activity-card" key={meetingHref(meeting)}>
+                      <MeetingLink meeting={meeting} />
+                    </li>
+                  ),
+                })),
+              ...(month?.rfcs ?? []).map((rfc) => ({
+                date: rfc.events[0].date,
+                element: (
+                  <li key={rfc.identifier}>
                     <article className="activity-card">
                       <div className="activity-card-top">
                         <a href={`/rfcs/${rfc.identifier}/`}>
@@ -291,19 +548,27 @@ function ActivityPage({ data }: { data: SiteData }) {
                       </div>
                       <ul className="activity-events">
                         {rfc.events.map((event, index) => (
-                          <li
-                            key={`${rfc.identifier}:${event.type}:${event.date}:${index}`}
-                          >
+                          <li key={`${event.type}:${event.date}:${index}`}>
                             {renderActivityEvent(event)}
                           </li>
                         ))}
                       </ul>
                     </article>
                   </li>
-                ))}
-              </ul>
-            </section>
-          ))}
+                ),
+              })),
+            ].sort((a, b) => b.date.localeCompare(a.date));
+            return (
+              <section className="activity-month" key={key}>
+                <div className="activity-month-divider">
+                  <span>{formatMonthLabel(key)}</span>
+                </div>
+                <ul className="activity-list">
+                  {cards.map(({ element }) => element)}
+                </ul>
+              </section>
+            );
+          })}
         </div>
       </section>
     </Layout>
@@ -379,8 +644,12 @@ function AllRfcsPage({ data }: { data: SiteData }) {
   );
 }
 
-function RfcPage(props: { frontmatter: RfcFrontmatter; body: string }) {
-  const { frontmatter, body } = props;
+function RfcPage(props: {
+  frontmatter: RfcFrontmatter;
+  meetings: Meeting[];
+  body: string;
+}) {
+  const { frontmatter, body, meetings } = props;
   const openedOn = getOpenedOn(frontmatter.events);
   const secondaryDate = getSecondaryDate(frontmatter);
   const contentBody = stripGeneratedTimeline(stripLeadingTitle(body));
@@ -463,6 +732,10 @@ function RfcPage(props: { frontmatter: RfcFrontmatter; body: string }) {
 
         <article className="markdown-body">
           <Markdown content={contentBody} />
+          <RfcMeetings
+            meetings={meetings}
+            identifier={frontmatter.identifier}
+          />
           <section className="detail-timeline">
             <h2>Timeline</h2>
             <div className="activity-groups detail-timeline-groups">
@@ -508,13 +781,63 @@ function NotFoundPage() {
   );
 }
 
-function Markdown({ content }: { content: string }) {
+function Markdown({
+  content,
+  source,
+}: {
+  content: string;
+  source?: MeetingSource;
+}) {
+  const resolve = (url: string | undefined, image = false) => {
+    if (
+      !source ||
+      !url ||
+      url.startsWith("#") ||
+      /^[a-z][a-z0-9+.-]*:/i.test(url) ||
+      url.startsWith("//")
+    )
+      return normalizeHref(url);
+    const base = new URL(source.href);
+    const repo = base.pathname.split("/").slice(0, 5).join("/");
+    const resolved = url.startsWith("/")
+      ? new URL(repo + url, base)
+      : new URL(url, base);
+    if (image) resolved.pathname = resolved.pathname.replace("/blob/", "/raw/");
+    return resolved.href;
+  };
+  const headingComponent =
+    (tag: `h${1 | 2 | 3 | 4 | 5 | 6}`) =>
+    ({
+      children,
+      node,
+    }: React.PropsWithChildren<{
+      node?: { position?: { start: { line: number } } };
+    }>) =>
+      React.createElement(
+        tag,
+        {
+          id:
+            source?.section && node?.position
+              ? `${source.section}-${node.position.start.line}`
+              : undefined,
+        },
+        children,
+      );
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
+        ...(source && {
+          h1: headingComponent("h1"),
+          h2: headingComponent("h2"),
+          h3: headingComponent("h3"),
+          h4: headingComponent("h4"),
+          h5: headingComponent("h5"),
+          h6: headingComponent("h6"),
+          img: ({ src, alt }) => <img src={resolve(src, true)} alt={alt} />,
+        }),
         a: ({ href, children, node: _node, ...props }) => (
-          <a href={normalizeHref(href)} {...props}>
+          <a href={resolve(href)} {...props}>
             {children}
           </a>
         ),
@@ -671,7 +994,7 @@ function groupActivityByMonth(activity: ActivityEntry[]) {
   >();
 
   for (const entry of activity) {
-    const monthLabel = formatMonthLabel(formatDate(entry.event.date));
+    const monthLabel = formatDate(entry.event.date).slice(0, 7);
     const month = months.get(monthLabel) ?? new Map();
     months.set(monthLabel, month);
 
@@ -685,8 +1008,8 @@ function groupActivityByMonth(activity: ActivityEntry[]) {
     month.set(entry.identifier, rfc);
   }
 
-  return [...months.entries()].map(([label, days]) => ({
-    label,
+  return [...months.entries()].map(([key, days]) => ({
+    key,
     rfcs: [...days.values()]
       .map((rfc) => ({
         ...rfc,

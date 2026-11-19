@@ -71,6 +71,7 @@ export interface SiteData {
   totalCount: number;
   rfcs: RfcSummary[];
   activity: ActivityEntry[];
+  meetings?: Meeting[];
 }
 
 export interface RfcFrontmatter {
@@ -90,4 +91,20 @@ export interface RfcFrontmatter {
   events: Event[];
   updatedAt: string;
   description: string;
+}
+
+export interface MeetingSource {
+  href: string;
+  content: string;
+  section?: string;
+}
+
+export interface Meeting {
+  id: string;
+  group: string;
+  date: string;
+  cancelled: boolean;
+  agenda: MeetingSource;
+  notes: MeetingSource[];
+  references: { identifier: string; section?: string }[];
 }
