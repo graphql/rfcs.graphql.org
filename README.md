@@ -13,7 +13,8 @@ link to proposals independently of discovery.
 
 Core spec PRs use bare numeric routes such as `/rfcs/42/`. Other projects use
 their repository alias, such as `/rfcs/js-42/` or `/rfcs/jswg-42/`.
-The RFC index and activity feed both offer project filters.
+The RFC index and activity feed group repositories by working group. GraphQL.js
+and its WG share one filter, as do Composite Schemas WG and Federation Spec.
 
 ## Repo setup
 

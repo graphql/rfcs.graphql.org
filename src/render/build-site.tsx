@@ -1,6 +1,6 @@
 import type { Nodes, Root } from "mdast";
 import { meetingDetails } from "./meeting-details.ts";
-import { projects, projectName } from "../lib/projects.ts";
+import { projectFilters, projectName } from "../lib/projects.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
@@ -65,15 +65,6 @@ function assertSafeURLPath(str: string): string {
   return str;
 }
 
-const projectFilters = [
-  { alias: "graphql", repo: "graphql-wg", name: "GraphQL Spec" },
-  ...projects,
-];
-const groupForProject: Record<string, string> = {
-  js: "graphql-js-wg",
-  fed: "composite-schemas-wg",
-};
-
 async function main(): Promise<void> {
   const data = JSON.parse(
     await fs.readFile(path.join(GENERATED_DIR, "site.json"), "utf8"),
@@ -125,9 +116,7 @@ async function main(): Promise<void> {
 
   for (const project of projectFilters) {
     const rfcs = data.rfcs.filter(
-      (rfc) =>
-        projectName(rfc.identifier) ===
-        (project.alias === "graphql" ? "GraphQL" : project.name),
+      (rfc) => projectName(rfc.identifier) === project.name,
     );
     const identifiers = new Set(rfcs.map((rfc) => rfc.identifier));
     const subset = {
@@ -139,25 +128,31 @@ async function main(): Promise<void> {
       ),
       meetings: data.meetings?.filter(
         (meeting) =>
-          meeting.group === (groupForProject[project.alias] ?? project.repo) ||
+          meeting.group === project.meetingGroup ||
           meeting.references.some((ref) => identifiers.has(ref.identifier)),
       ),
     };
     for (const section of ["rfcs", "activity"] as const) {
       const pathname = `/${section}/projects/${project.alias}/`;
-      await writePage(
-        path.join(DIST_DIR, pathname.slice(1), "index.html"),
-        section === "rfcs" ? (
-          <AllRfcsPage data={subset} project={project} />
-        ) : (
-          <ActivityPage data={subset} project={project} />
-        ),
-        {
-          pathname,
-          title: project.name + " " + section,
-          description: "Tracked proposals for " + project.name,
-        },
-      );
+      // Keep previously published repository filter URLs pointing at the shared view.
+      const aliases = new Set([
+        project.alias,
+        ...project.sources.map((source) => source.alias),
+      ]);
+      for (const alias of aliases)
+        await writePage(
+          path.join(DIST_DIR, section, "projects", alias, "index.html"),
+          section === "rfcs" ? (
+            <AllRfcsPage data={subset} project={project} />
+          ) : (
+            <ActivityPage data={subset} project={project} />
+          ),
+          {
+            pathname,
+            title: project.name + " " + section,
+            description: "Tracked proposals for " + project.name,
+          },
+        );
     }
   }
 
@@ -781,7 +776,7 @@ function AllRfcsPage({
                       <span className="badge">Next stage</span>
                     ) : null}
                   </td>
-                  <td>{rfc.project ?? projectName(rfc.identifier)}</td>
+                  <td>{projectName(rfc.identifier)}</td>
                   <td>{stageLabel(rfc.stage)}</td>
                   <td>
                     {rfc.champion ? (
@@ -843,7 +838,7 @@ function RfcPage(props: {
           <h2>Summary</h2>
           <dl className="meta-grid">
             <dt>Project</dt>
-            <dd>{frontmatter.project ?? "GraphQL"}</dd>
+            <dd>{projectName(frontmatter.identifier)}</dd>
             <dt>Identifier</dt>
             <dd>{formatIdentifier(frontmatter.identifier)}</dd>
             <dt>Stage</dt>
