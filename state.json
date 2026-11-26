@@ -2055,9 +2055,15 @@
           "date": "2026-09-03T17:53:03Z",
           "label": "RFC 2",
           "type": "unlabeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-11-26T17:08:55Z",
+          "label": "Next stage",
+          "type": "unlabeled"
         }
       ],
-      "updatedAt": "2026-09-17T17:39:08Z"
+      "updatedAt": "2026-11-26T17:08:55Z"
     },
     "graphql/graphql-spec#1224": {
       "events": [
@@ -2197,9 +2203,15 @@
           "date": "2026-09-10T15:02:05Z",
           "label": "Next stage",
           "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-11-26T17:09:02Z",
+          "label": "Next stage",
+          "type": "unlabeled"
         }
       ],
-      "updatedAt": "2026-09-17T17:43:40Z"
+      "updatedAt": "2026-11-26T17:09:03Z"
     },
     "graphql/graphql-spec#1228": {
       "events": [
