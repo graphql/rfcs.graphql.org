@@ -570,8 +570,29 @@ time { white-space: nowrap; }
   padding: 0;
 }
 .home-wg-links a { color: var(--muted); }
-.home-rfc-links { display: flex; flex-wrap: wrap; gap: 1rem 2rem; }
-.home-rfc-links a { font-size: 1.1rem; font-weight: 500; }
+.home-rfc-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.home-rfc-links a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .85rem .65rem;
+  border: 1px solid var(--accent-line);
+  border-radius: .35rem;
+  background: var(--card);
+  font-size: 1.1rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.home-rfc-links a:hover, .home-rfc-links a:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  text-decoration: none;
+}
 .home-rfc-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
