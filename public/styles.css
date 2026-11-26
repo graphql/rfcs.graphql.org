@@ -612,7 +612,8 @@ time { white-space: nowrap; }
   .home-rfc-stats { grid-template-columns: 1fr; }
 }
 .activity-month-divider { scroll-margin-top: 1.5rem; }
-.month-shortcut { font-size: .9rem; color: var(--muted); font-weight: 400; }
+.activity-month-divider a { text-decoration: none; }
+.activity-month-divider a:hover, .activity-month-divider a:focus-visible { text-decoration: underline; text-decoration-color: var(--accent); }
 .rfc-table .badge { display: block; width: fit-content; margin: .3rem 0 0; }
 @media (max-width: 640px) {
   .home-destinations { grid-template-columns: 1fr; }

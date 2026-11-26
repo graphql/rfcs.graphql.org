@@ -444,13 +444,8 @@ function MonthHeading({ date }: { date: string }) {
   const id = month.replace("-", "");
   return (
     <h2 className="activity-month-divider" id={id}>
-      <span>{formatMonthLabel(month)}</span>
-      <a
-        className="month-shortcut"
-        href={`#${id}`}
-        aria-label={`Link to ${formatMonthLabel(month)}`}
-      >
-        #{id}
+      <a href={`#${id}`}>
+        <span>{formatMonthLabel(month)}</span>
       </a>
     </h2>
   );
