@@ -141,20 +141,20 @@ async function main(): Promise<void> {
     },
   );
 
-  for (const targetPath of [
-    path.join(DIST_DIR, "index.html"),
+  await writePage(path.join(DIST_DIR, "index.html"), <HomePage data={data} />, {
+    title: "GraphQL RFC Tracker",
+    description: "Follow GraphQL RFCs and working group meetings.",
+    pathname: "/",
+  });
+  await writePage(
     path.join(DIST_DIR, "activity", "index.html"),
-  ]) {
-    await writePage(
-      targetPath,
-      <ActivityPage filters={activeProjects} data={data} />,
-      {
-        title: "GraphQL RFC Activity",
-        description: "Chronological activity across tracked GraphQL RFCs.",
-        pathname: "/activity/",
-      },
-    );
-  }
+    <ActivityPage filters={activeProjects} data={data} />,
+    {
+      title: "GraphQL RFC Activity",
+      description: "Chronological activity across tracked GraphQL RFCs.",
+      pathname: "/activity/",
+    },
+  );
 
   for (const { project, subset } of projectPages) {
     for (const section of ["rfcs", "activity"] as const) {
@@ -313,18 +313,14 @@ function MobileRfcList({ rfcs }: { rfcs: SiteData["rfcs"] }) {
   );
 }
 
-function OpenRfcsPage({ data }: { data: SiteData }) {
-  const openRfcs = data.rfcs
-    .filter((rfc) => !rfc.mergedAt && !rfc.closedAt)
-    .sort(compareRfcListEntries);
-
+function HomePage({ data }: { data: SiteData }) {
   return (
     <Layout
-      title="Open GraphQL RFCs"
-      description={`Tracks ${data.totalCount} GraphQL RFCs across the spec and working group repos.`}
-      pathname="/rfcs/open/"
+      title="GraphQL RFC Tracker"
+      description="Follow GraphQL RFCs and working group meetings."
+      pathname="/"
     >
-      <section className="hero">
+      <section className="hero home-overview">
         <p className="eyebrow">rfcs.graphql.org</p>
         <h1>GraphQL RFC Tracker</h1>
         <p className="lede">
@@ -342,15 +338,79 @@ function OpenRfcsPage({ data }: { data: SiteData }) {
           </div>
         </div>
       </section>
+      <nav className="home-destinations" aria-label="Explore the tracker">
+        {[
+          { href: "/activity/", title: "Latest activity" },
+          { href: "/meetings/", title: "Meetings" },
+          { href: "/rfcs/open/", title: "Open RFCs" },
+          { href: "/rfcs/", title: "All RFCs" },
+        ].map(({ href, title }) => (
+          <a href={href} key={href}>
+            <span>{title}</span>
+            <span aria-hidden="true">→</span>
+          </a>
+        ))}
+      </nav>
+    </Layout>
+  );
+}
 
+function MonthHeading({ date }: { date: string }) {
+  const month = formatDate(date).slice(0, 7);
+  const id = month.replace("-", "");
+  return (
+    <h2 className="activity-month-divider" id={id}>
+      <span>{formatMonthLabel(month)}</span>
+      <a
+        className="month-shortcut"
+        href={`#${id}`}
+        aria-label={`Link to ${formatMonthLabel(month)}`}
+      >
+        #{id}
+      </a>
+    </h2>
+  );
+}
+
+function DateText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(\d{4}-\d{2}-\d{2})/).map((part, index) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(part) ? (
+          <time key={index} dateTime={part}>
+            {part}
+          </time>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
+function OpenRfcsPage({ data }: { data: SiteData }) {
+  const openRfcs = data.rfcs
+    .filter((rfc) => !rfc.mergedAt && !rfc.closedAt)
+    .sort(compareRfcListEntries);
+
+  return (
+    <Layout
+      title="Open GraphQL RFCs"
+      description={`Tracks ${data.totalCount} GraphQL RFCs across the spec and working group repos.`}
+      pathname="/rfcs/open/"
+    >
       <section className="section-block">
-        <div className="section-head">
-          <h2>Open RFCs</h2>
-          <a href="/activity/">View activity</a>
-        </div>
+        <h1>Open RFCs</h1>
         <MobileRfcList rfcs={openRfcs} />
         <div className="table-wrap desktop-rfcs">
           <table className="rfc-table">
+            <colgroup>
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "14%" }} />
+              <col />
+              <col style={{ width: "20%" }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>RFC</th>
@@ -384,7 +444,9 @@ function OpenRfcsPage({ data }: { data: SiteData }) {
                   <td>
                     <a href={`/rfcs/${rfc.identifier}/`}>{rfc.title}</a>
                   </td>
-                  <td>{latestSummary(rfc)}</td>
+                  <td>
+                    <DateText text={latestSummary(rfc)} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -586,9 +648,7 @@ async function writeMeetings(meetings: Meeting[], today: string) {
         />
         {[...months].map(([month, items]) => (
           <section className="activity-month" key={month}>
-            <h2 className="activity-month-divider">
-              <span>{formatMonthLabel(month)}</span>
-            </h2>
+            <MonthHeading date={month} />
             <ul className="activity-list">
               {items.map((meeting) => (
                 <MeetingActivityCard
@@ -653,7 +713,10 @@ async function writeMeetings(meetings: Meeting[], today: string) {
         title,
         <>
           <header className="section-block">
-            <h1>{title}</h1>
+            <h1>
+              {groupName(group)} ·{" "}
+              <time dateTime={meeting.date}>{meeting.date}</time>
+            </h1>
             <a href={groupHref}>{groupName(group)} meetings</a> ·{" "}
             {meeting.notes.length ? (
               <a href={`#${meeting.notes[0]!.section}`}>Jump to notes</a>
@@ -844,9 +907,7 @@ function ActivityPage({
             ].sort((a, b) => b.date.localeCompare(a.date));
             return (
               <section className="activity-month" key={key}>
-                <div className="activity-month-divider">
-                  <span>{formatMonthLabel(key)}</span>
-                </div>
+                <MonthHeading date={key} />
                 <ul className="activity-list">
                   {cards.map(({ element }) => element)}
                 </ul>
@@ -887,6 +948,14 @@ function AllRfcsPage({
         <MobileRfcList rfcs={allRfcs} />
         <div className="table-wrap desktop-rfcs">
           <table className="rfc-table">
+            <colgroup>
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "12%" }} />
+              <col />
+              <col style={{ width: "20%" }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>RFC</th>
@@ -927,7 +996,9 @@ function AllRfcsPage({
                   <td>
                     <a href={`/rfcs/${rfc.identifier}/`}>{rfc.title}</a>
                   </td>
-                  <td>{latestSummary(rfc)}</td>
+                  <td>
+                    <DateText text={latestSummary(rfc)} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1032,7 +1103,9 @@ function RfcOverview({ rfc }: { rfc: RfcFrontmatter }) {
           {rfc.events[0] && (
             <>
               <dt>Latest activity</dt>
-              <dd>{summarizeEvent(rfc.events[0])}</dd>
+              <dd>
+                <DateText text={summarizeEvent(rfc.events[0])} />
+              </dd>
             </>
           )}
           {sources.some(([, href]) => href) && (
@@ -1103,11 +1176,15 @@ function RfcPage(props: {
         <div className="hero-meta">
           <div>
             <span className="meta-label">Opened on</span>
-            <strong>{openedOn}</strong>
+            <strong>
+              <time dateTime={openedOn}>{openedOn}</time>
+            </strong>
           </div>
           <div>
             <span className="meta-label">{secondaryDate.label}</span>
-            <strong>{secondaryDate.value}</strong>
+            <strong>
+              <time dateTime={secondaryDate.value}>{secondaryDate.value}</time>
+            </strong>
           </div>
         </div>
       </section>
@@ -1126,9 +1203,7 @@ function RfcPage(props: {
             <div className="activity-groups detail-timeline-groups">
               {timelineMonths.map((month) => (
                 <section className="activity-month" key={month.label}>
-                  <div className="activity-month-divider">
-                    <span>{month.label}</span>
-                  </div>
+                  <MonthHeading date={month.events[0]!.date} />
                   <ul className="detail-timeline-list">
                     {month.events.map((event, index) => (
                       <li
@@ -1360,7 +1435,7 @@ function rfcDescriptions(body: string) {
 
 function eventSentence(event: Event): string {
   if (event.type === "commitsPushed") {
-    return `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"} pushed on ${formatDate(event.date)}.`;
+    return `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"} pushed on $<time dateTime={formatDate(event.date)}>{formatDate(event.date)}</time>.`;
   }
   return `${summarizeEvent(event)}.`;
 }
@@ -1380,7 +1455,9 @@ function renderActivityEvent(
             ? `@${commit.ghUser}`
             : (commit.authorName ?? "Someone")}{" "}
           committed "<a href={commit.href}>{commit.headline}</a>" on{" "}
-          {formatDate(event.date)}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>
         </>
       );
     }
@@ -1388,7 +1465,7 @@ function renderActivityEvent(
     return (
       <>
         <a href={event.href}>{event.commits.length} commits pushed</a> on{" "}
-        {formatDate(event.date)}
+        <time dateTime={formatDate(event.date)}>{formatDate(event.date)}</time>
         <ul className="activity-event-commits">
           {event.commits.map((commit) => (
             <li key={commit.href}>
@@ -1411,34 +1488,48 @@ function renderActivityEvent(
       return (
         <>
           <a href={event.href}>Pull request</a> created on{" "}
-          {formatDate(event.date)} by {event.actor ?? "unknown"}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "prMerged":
       return (
         <>
           <a href={event.href}>Pull request</a> merged on{" "}
-          {formatDate(event.date)} by {event.actor ?? "unknown"}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "prClosed":
       return (
         <>
           <a href={event.href}>Pull request</a> closed on{" "}
-          {formatDate(event.date)}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>
         </>
       );
     case "topCommentEdited":
       return (
         <>
           <a href={event.href}>Top comment</a> edited on{" "}
-          {formatDate(event.date)} by {event.actor ?? "unknown"}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "statusChanged":
       return (
         <>
-          <a href={event.href}>{event.summary}</a> on {formatDate(event.date)}
+          <a href={event.href}>{event.summary}</a> on{" "}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>
           {event.actor ? ` by ${event.actor}` : ""}
         </>
       );
@@ -1446,21 +1537,30 @@ function renderActivityEvent(
       return (
         <>
           <a href={event.href}>RFC document</a> created on{" "}
-          {formatDate(event.date)} by {event.actor ?? "unknown"}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "docUpdated":
       return (
         <>
           <a href={event.href}>RFC document</a> updated on{" "}
-          {formatDate(event.date)} by {event.actor ?? "unknown"}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "wgDiscussionCreated":
       return (
         <>
           <a href={event.href}>WG discussion</a> created on{" "}
-          {formatDate(event.date)} by {event.actor ?? "unknown"}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "wgAgenda":
@@ -1476,7 +1576,9 @@ function renderActivityEvent(
         <>
           {discussed ? "Discussed in " : "On the agenda for "}
           <a href={event.href}>
-            {formatDate(event.date)}{" "}
+            <time dateTime={formatDate(event.date)}>
+              {formatDate(event.date)}
+            </time>{" "}
             {groupName(meeting?.group ?? event.group ?? "WG")}
           </a>
           {meeting &&

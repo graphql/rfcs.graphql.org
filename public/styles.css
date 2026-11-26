@@ -195,6 +195,7 @@ h2 {
 .rfc-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .rfc-table th,
@@ -203,6 +204,7 @@ h2 {
   border-top: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .rfc-table th {
@@ -340,8 +342,8 @@ h2 {
 }
 
 .meeting-activity {
-  margin-bottom: .9rem;
-  padding: .85rem 1.2rem;
+  margin-bottom: 1rem;
+  padding: 1.1rem 1.2rem;
   border-left: 4px solid #497775;
   background: #e8efec;
   border-radius: 0 .5rem .5rem 0;
@@ -352,10 +354,12 @@ h2 {
   flex-wrap: wrap;
   gap: .4rem 1rem;
 }
-.meeting-activity-heading { justify-content: space-between; }
+.meeting-activity-heading { flex-direction: column; align-items: flex-start; gap: .25rem; }
+.meeting-activity-heading strong { font-size: 1.1rem; font-weight: 500; }
+.meeting-activity-heading time { color: var(--muted); }
 .meeting-activity time, .meeting-activity-links, .meeting-activity p { font-size: .9rem; }
-.meeting-activity p { margin: .35rem 0; }
-.meeting-activity-links { margin-top: .4rem; }
+.meeting-activity p { margin: .5rem 0 .35rem; color: var(--muted); }
+.meeting-activity-links { margin-top: .75rem; }
 
 .meeting-activity-video {
   display: grid;
@@ -435,7 +439,7 @@ h2 {
   .meeting-navigation .next-series { grid-column: 2; grid-row: 1; }
 }
 
-.meeting-activity-video .meeting-activity-heading { justify-content: flex-start; }
+
 .mobile-rfcs { display: none; }
 @media (max-width: 900px) {
   .desktop-rfcs { display: none; }
@@ -533,21 +537,6 @@ h2 {
   padding-bottom: .25rem;
 }
 .meeting-archive .activity-month { margin-top: 1.75rem; }
-.meeting-archive .meeting-activity {
-  padding: 1.1rem 1.2rem;
-  margin-bottom: 1rem;
-}
-.meeting-archive .meeting-activity-heading {
-  justify-content: space-between;
-  gap: .35rem 1rem;
-}
-.meeting-archive .meeting-activity-heading strong { font-size: 1.1rem; font-weight: 500; }
-.meeting-archive .meeting-activity-heading time { color: var(--muted); white-space: nowrap; }
-.meeting-archive .meeting-activity-links { margin-top: .75rem; }
-.meeting-archive .meeting-activity p { color: var(--muted); margin-top: .5rem; }
-@media (max-width: 900px) {
-  .meeting-archive .meeting-activity-heading { flex-direction: column; gap: .25rem; }
-}
 @media (max-width: 640px) {
   .meeting-archive > .filter-links {
     display: grid;
@@ -555,9 +544,43 @@ h2 {
     align-items: start;
     gap: .85rem 1rem;
   }
-  .meeting-archive .meeting-activity { padding: 1rem; }
+  .meeting-activity { padding: 1rem; }
 }
 
 @media (max-width: 640px) {
   .site-nav { column-gap: .65rem; }
 }
+
+time { white-space: nowrap; }
+.home-destinations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.home-destinations a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: .4rem;
+  background: var(--card);
+  font-size: 1.5rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.home-destinations a:hover, .home-destinations a:focus-visible {
+  border-color: var(--accent);
+  background: white;
+}
+.home-destinations a > :last-child { color: var(--accent); }
+.activity-month-divider { scroll-margin-top: 1.5rem; }
+.month-shortcut { font-size: .9rem; color: var(--muted); font-weight: 400; }
+.rfc-table .badge { display: block; width: fit-content; margin: .3rem 0 0; }
+@media (max-width: 640px) {
+  .home-destinations { grid-template-columns: 1fr; }
+  .activity-month-divider { gap: .65rem; flex-wrap: wrap; }
+}
+
+.home-overview .hero-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
