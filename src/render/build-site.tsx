@@ -615,7 +615,11 @@ async function writeMeetings(meetings: Meeting[], today: string) {
           <header className="section-block">
             <h1>{title}</h1>
             <a href={groupHref}>{groupName(group)} meetings</a> ·{" "}
-            {meetingStatus(meeting)}
+            {meeting.notes.length ? (
+              <a href={`#${meeting.notes[0]!.section}`}>Jump to notes</a>
+            ) : (
+              meetingStatus(meeting)
+            )}
           </header>
           {navigation}
           <MeetingDocument source={meeting.agenda} title="Agenda" />
@@ -680,11 +684,13 @@ function MeetingDocument({
       <p>
         <a href={source.href}>View {title.toLowerCase()} on GitHub</a>
       </p>
-      <Markdown
-        content={source.content}
-        source={source}
-        agenda={title === "Agenda"}
-      />
+      <div className="meeting-document-content">
+        <Markdown
+          content={source.content}
+          source={source}
+          agenda={title === "Agenda"}
+        />
+      </div>
     </section>
   );
 }
