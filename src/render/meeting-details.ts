@@ -69,12 +69,10 @@ export function meetingDetails(meeting: Meeting) {
     agenda,
     /^#{1,6}\s+(?:agenda|agenda items|topics)\s*:?\s*$/i,
   ).filter((line) => /^(?:\d+[.)]|[-*+])\s+\S/.test(line)).length;
-  const recordingUrl = [...notes, agenda].map(recording).find(Boolean);
   // Notes sometimes repeat an earlier meeting's recording link.
-  const video =
-    meeting.youtubeVideoId && meeting.youtubeVideoId !== youtubeId(recordingUrl)
-      ? "https://www.youtube.com/watch?v=" + meeting.youtubeVideoId
-      : recordingUrl;
+  const video = meeting.youtubeVideoId
+    ? "https://www.youtube.com/watch?v=" + meeting.youtubeVideoId
+    : [...notes, agenda].map(recording).find(Boolean);
   return {
     videoId: youtubeId(video),
     attendees: actual ?? listedAttendees(agenda),
