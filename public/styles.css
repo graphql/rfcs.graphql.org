@@ -388,7 +388,7 @@ h2 {
 
 .meeting-activity-video {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, min(45%, 360px));
   align-items: start;
   gap: 1rem;
 }
@@ -430,3 +430,21 @@ h2 {
 }
 .meeting-navigation a:hover, .meeting-navigation a:focus-visible { border-color: var(--accent); }
 .meeting-navigation span { color: var(--muted); background: transparent; }
+
+.meeting-activity-video .meeting-activity-heading { justify-content: flex-start; }
+.mobile-rfcs { display: none; }
+@media (max-width: 900px) {
+  .desktop-rfcs { display: none; }
+  .mobile-rfcs { display: block; }
+  .mobile-rfcs ul { list-style: none; margin: 0; padding: 0; }
+  .mobile-rfcs li { border-top: 1px solid var(--line); padding: .85rem 0; }
+  .mobile-rfc-title { font-weight: 600; overflow-wrap: anywhere; }
+  .mobile-rfc-title span { white-space: nowrap; font-size: .9em; color: var(--muted); font-weight: 400; }
+  .mobile-rfc-meta { margin-top: .35rem; font-size: .88rem; color: var(--muted); }
+}
+
+.markdown-body a, .activity-card { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .activity-card-top { flex-direction: column; gap: .25rem; }
+  .activity-card-top > span { color: var(--muted); font-weight: 400; }
+}
