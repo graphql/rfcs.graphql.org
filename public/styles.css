@@ -401,3 +401,32 @@ h2 {
 @media (max-width: 640px) {
   .meeting-activity-video { grid-template-columns: 1fr; }
 }
+
+.filter-links, .meeting-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem 1rem;
+  margin: .9rem 0 1.4rem;
+}
+.filter-links a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: .25rem 0;
+}
+.filter-links a:hover, .filter-links a:focus-visible { text-decoration: underline; }
+.filter-links a[aria-current="page"] {
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: underline solid var(--accent) .24em;
+  text-underline-offset: .35em;
+}
+.meeting-navigation a, .meeting-navigation span {
+  padding: .6rem .95rem;
+  border: 1px solid var(--line);
+  border-radius: .45rem;
+  background: var(--card);
+  font-weight: 600;
+  text-decoration: none;
+}
+.meeting-navigation a:hover, .meeting-navigation a:focus-visible { border-color: var(--accent); }
+.meeting-navigation span { color: var(--muted); background: transparent; }
