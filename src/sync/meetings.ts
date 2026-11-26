@@ -1,3 +1,4 @@
+import { noteQuotes } from "./note-quotes.ts";
 import type { Nodes, Root } from "mdast";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -305,6 +306,22 @@ export async function collectMeetings(
         meeting.notes.forEach((note, index) => {
           note.section = `notes-${index + 1}`;
           if (meeting.cancelled) return;
+          const quotes = noteQuotes(
+            note.content,
+            note.section,
+            (text) => markdown.parse(text),
+            match,
+            (node) => nodeLinks(node, false),
+          );
+          for (const [identifier, excerpts] of quotes) {
+            const previous = references.get(identifier);
+            references.set(identifier, {
+              ...previous,
+              identifier,
+              section: previous?.section ?? excerpts[0].section,
+              quotes: [...(previous?.quotes ?? []), ...excerpts],
+            });
+          }
           let section = note.section;
           let excludedDepth = 7;
           for (const node of markdown.parse(note.content).children) {

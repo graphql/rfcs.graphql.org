@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { graphql } from "@octokit/graphql";
 import { promises as fs } from "node:fs";
 import { existsSync } from "node:fs";
@@ -41,7 +42,10 @@ const RFCS_DIR = path.join(GENERATED_DIR, "rfcs");
 const DATA_PATH = path.join(GENERATED_DIR, "site.json");
 const STATE_PATH = path.join(ROOT, "state.json");
 const TEMP_DIR = path.join(ROOT, "temp");
-const WG_DIR = path.join(TEMP_DIR, "graphql-wg");
+const localWg = path.join(homedir(), "Dev/graphql/graphql-wg");
+const WG_DIR = existsSync(path.join(localWg, "notes"))
+  ? localWg
+  : path.join(TEMP_DIR, "graphql-wg");
 const GRAPHQL_SPEC_PR_QUERY = `
 query GetSpecPRs($after: String) {
   organization(login: "graphql") {
@@ -370,7 +374,7 @@ async function main(): Promise<void> {
       if (!records.has(related)) record.related.delete(related);
   }
   const meetings = await collectMeetings(
-    (group) => path.join(TEMP_DIR, group),
+    (group) => (group === "graphql-wg" ? WG_DIR : path.join(TEMP_DIR, group)),
     records.values(),
   );
 
@@ -466,6 +470,7 @@ async function saveState(state: SyncState): Promise<void> {
 }
 
 async function ensureWgCheckout(group: string): Promise<void> {
+  if (group === "graphql-wg" && WG_DIR === localWg) return;
   const directory = path.join(TEMP_DIR, group);
   if (!existsSync(directory)) {
     await run("git", [
@@ -1188,9 +1193,11 @@ async function writeGeneratedMarkdown(
         "",
         "## At a glance",
         "",
+        `- Project: ${projectName(summary.identifier)}`,
         `- Identifier: ${formatIdentifier(summary.identifier)}`,
         `- Stage: ${stageLabel(summary.stage)}`,
         `- Champion: ${summary.champion ? `[@${summary.champion}](https://github.com/${summary.champion})` : "-"}`,
+        `- Updated: ${formatDate(summary.updatedAt)}`,
         `- Latest activity: ${escapeInlineMarkdown(summarizeEvent(summary.events[0]))}`,
         ...(summary.issueUrl
           ? [`- Issue: [${summary.issueUrl}](${summary.issueUrl})`]

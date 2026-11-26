@@ -68,7 +68,6 @@ pre {
 .site-footer,
 .hero,
 .section-block,
-.summary-card,
 .markdown-body,
 .activity-card {
   border: 1px solid var(--line);
@@ -177,7 +176,6 @@ h2 {
 }
 
 .section-block,
-.summary-card,
 .markdown-body {
   padding: 1.5rem;
 }
@@ -221,27 +219,6 @@ h2 {
   background: var(--accent-soft);
   color: var(--accent);
   font-size: 0.75rem;
-}
-
-.section-grid {
-  display: grid;
-  grid-template-columns: minmax(17rem, 22rem) minmax(0, 1fr);
-  gap: 1.5rem;
-}
-
-.meta-grid {
-  display: grid;
-  grid-template-columns: minmax(6rem, 8rem) 1fr;
-  gap: 0.55rem 0.8rem;
-  margin: 0;
-}
-
-.meta-grid dt {
-  color: var(--muted);
-}
-
-.meta-grid dd {
-  margin: 0;
 }
 
 .link-list,
@@ -362,12 +339,6 @@ h2 {
   color: var(--muted);
 }
 
-@media (max-width: 900px) {
-  .section-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 .meeting-activity {
   margin-bottom: .9rem;
   padding: .85rem 1.2rem;
@@ -457,3 +428,58 @@ h2 {
 }
 .meeting-agenda-summary li + li { margin-top: .25rem; }
 .meeting-agenda-summary a { white-space: nowrap; font-weight: 600; }
+
+.meeting-quotes {
+  margin-block: .8rem 1.2rem;
+}
+.meeting-quote {
+  margin: 0 0 .65rem;
+  padding: .8rem 1rem;
+  border-inline-start: 3px solid #497775;
+  background: #eef3f1;
+  border-radius: 0 .4rem .4rem 0;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.meeting-quote :is(p, h1, h2, h3, h4, h5, h6) { margin: 0 0 .55rem; }
+.meeting-quote :is(h1, h2, h3, h4, h5, h6), .quote-heading { font-size: 1rem; font-weight: 600; }
+.meeting-quote cite { font-size: .85rem; color: var(--muted); font-style: normal; }
+.meeting-quotes iframe { width: min(100%, 300px); aspect-ratio: 16/9; border: 0; border-radius: .35rem; }
+.detail-timeline-list, .activity-events { container-type: inline-size; }
+@container (min-width: 640px) {
+  .meeting-quotes.with-recording { display: grid; grid-template-columns: minmax(0,1fr) minmax(180px,30%); align-items: start; gap: .8rem; }
+}
+.meeting-quotes { margin-inline-start: clamp(.3rem, 1.2vw, 1rem); }
+
+.rfc-detail > p, .rfc-detail > ul, .rfc-detail > ol { max-width: 80ch; }
+.rfc-detail .meeting-quotes iframe { width: 100%; }
+@container (min-width: 640px) {
+  .rfc-detail .meeting-quotes.with-recording {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 46%);
+    gap: 1.25rem;
+  }
+}
+
+.rfc-overview {
+  padding-bottom: 1.4rem;
+  margin-bottom: 1.6rem;
+  border-bottom: 1px solid var(--line);
+}
+.rfc-overview-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 2rem;
+}
+.rfc-overview dl {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  align-content: start;
+  gap: .5rem .75rem;
+  margin: 0;
+}
+.rfc-overview dt { color: var(--muted); }
+.rfc-overview dd { margin: 0; overflow-wrap: anywhere; }
+.rfc-overview-links { display: flex; flex-wrap: wrap; gap: .25rem .85rem; }
+@media (max-width: 700px) {
+  .rfc-overview-columns { grid-template-columns: 1fr; gap: .5rem; }
+}

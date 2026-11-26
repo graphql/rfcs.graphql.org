@@ -1,4 +1,4 @@
-import type { Nodes, Root } from "mdast";
+import type { Nodes, Root, PhrasingContent } from "mdast";
 import { meetingDetails } from "./meeting-details.ts";
 import { projectFilters, projectName } from "../lib/projects.ts";
 import { promises as fs } from "node:fs";
@@ -24,6 +24,7 @@ import {
 import type {
   Meeting,
   MeetingSource,
+  NoteQuote,
   ActivityEntry,
   Event,
   RfcFrontmatter,
@@ -754,6 +755,9 @@ function ActivityPage({
   filters: ProjectFilter[];
 }) {
   const meetings = data.meetings ?? [];
+  const byHref = new Map(
+    meetings.map((meeting) => [meetingHref(meeting), meeting]),
+  );
   const activityGroups = groupActivityByMonth(data.activity);
   const monthKeys = [
     ...new Set([
@@ -813,7 +817,7 @@ function ActivityPage({
                       <ul className="activity-events">
                         {rfc.events.map((event, index) => (
                           <li key={`${event.type}:${event.date}:${index}`}>
-                            {renderActivityEvent(event)}
+                            {renderActivityEvent(event, rfc.identifier, byHref)}
                           </li>
                         ))}
                       </ul>
@@ -918,6 +922,136 @@ function AllRfcsPage({
   );
 }
 
+function MeetingNoteQuotes({
+  meeting,
+  identifier,
+}: {
+  meeting: Meeting;
+  identifier: string;
+}) {
+  const quotes = meeting.references.find(
+    (ref) => ref.identifier === identifier,
+  )?.quotes;
+  if (!quotes?.length) return null;
+  const { videoId } = meetingDetails(meeting);
+  const href = meetingHref(meeting);
+  return (
+    <div
+      className={videoId ? "meeting-quotes with-recording" : "meeting-quotes"}
+    >
+      <div>
+        {quotes.map((quote, index) => {
+          const note = meeting.notes.find(
+            (note) =>
+              quote.section === note.section ||
+              quote.section.startsWith(note.section + "-"),
+          );
+          const label = note?.href.includes("/summary-")
+            ? "Zoom summary"
+            : "Meeting notes";
+          return (
+            <blockquote key={index} className="meeting-quote">
+              {quote.title && (
+                <div className="quote-heading">{quote.title}</div>
+              )}
+              <Markdown
+                content={quote.markdown}
+                highlights={quote.highlights}
+                source={note && { href: note.href, content: quote.markdown }}
+              />
+              <cite>
+                <a href={href + "#" + quote.section}>
+                  {label} · {groupName(meeting.group)} · {meeting.date}
+                </a>
+              </cite>
+            </blockquote>
+          );
+        })}
+      </div>
+      {videoId && (
+        <iframe
+          title={
+            groupName(meeting.group) + " meeting recording, " + meeting.date
+          }
+          src={"https://www.youtube-nocookie.com/embed/" + videoId}
+          loading="lazy"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+      )}
+    </div>
+  );
+}
+
+function RfcOverview({ rfc }: { rfc: RfcFrontmatter }) {
+  const sources = [
+    ["Issue", rfc.issueUrl],
+    ["Pull request", rfc.prUrl],
+    ["RFC document", rfc.rfcDocUrl],
+    ["WG discussion", rfc.wgDiscussionUrl],
+  ] as const;
+  return (
+    <section className="rfc-overview">
+      <h2>At a glance</h2>
+      <div className="rfc-overview-columns">
+        <dl>
+          <dt>Project</dt>
+          <dd>{projectName(rfc.identifier)}</dd>
+          <dt>Identifier</dt>
+          <dd>{formatIdentifier(rfc.identifier)}</dd>
+          <dt>Stage</dt>
+          <dd>{stageLabel(rfc.stage)}</dd>
+          <dt>Champion</dt>
+          <dd>
+            {rfc.champion ? (
+              <a href={`https://github.com/${rfc.champion}`}>@{rfc.champion}</a>
+            ) : (
+              "—"
+            )}
+          </dd>
+        </dl>
+        <dl>
+          <dt>Updated</dt>
+          <dd>{formatDate(rfc.updatedAt)}</dd>
+          {rfc.events[0] && (
+            <>
+              <dt>Latest activity</dt>
+              <dd>{summarizeEvent(rfc.events[0])}</dd>
+            </>
+          )}
+          {sources.some(([, href]) => href) && (
+            <>
+              <dt>Source</dt>
+              <dd className="rfc-overview-links">
+                {sources.map(
+                  ([label, href]) =>
+                    href && (
+                      <a key={label} href={href}>
+                        {label}
+                      </a>
+                    ),
+                )}
+              </dd>
+            </>
+          )}
+          {!!rfc.related?.length && (
+            <>
+              <dt>Related RFCs</dt>
+              <dd className="rfc-overview-links">
+                {rfc.related.map((id) => (
+                  <a key={id} href={`/rfcs/${id}/`}>
+                    {formatIdentifier(id)}
+                  </a>
+                ))}
+              </dd>
+            </>
+          )}
+        </dl>
+      </div>
+    </section>
+  );
+}
+
 function RfcPage(props: {
   frontmatter: RfcFrontmatter;
   meetings: Meeting[];
@@ -926,7 +1060,15 @@ function RfcPage(props: {
   const { frontmatter, body, meetings } = props;
   const openedOn = getOpenedOn(frontmatter.events);
   const secondaryDate = getSecondaryDate(frontmatter);
-  const contentBody = stripGeneratedTimeline(stripLeadingTitle(body));
+  // The downloadable Markdown contains its own overview. Render the structured
+  // frontmatter in its place on the site.
+  const contentBody = stripGeneratedTimeline(stripLeadingTitle(body)).replace(
+    /^\s*## At a glance\r?\n[\s\S]*?(?=\n## |$)/,
+    "",
+  );
+  const byHref = new Map(
+    meetings.map((meeting) => [meetingHref(meeting), meeting]),
+  );
   const timelineMonths = groupEventsByMonth(frontmatter.events);
 
   return (
@@ -950,96 +1092,36 @@ function RfcPage(props: {
         </div>
       </section>
 
-      <section className="section-grid">
-        <aside className="summary-card">
-          <h2>Summary</h2>
-          <dl className="meta-grid">
-            <dt>Project</dt>
-            <dd>{projectName(frontmatter.identifier)}</dd>
-            <dt>Identifier</dt>
-            <dd>{formatIdentifier(frontmatter.identifier)}</dd>
-            <dt>Stage</dt>
-            <dd>{stageLabel(frontmatter.stage)}</dd>
-            <dt>Champion</dt>
-            <dd>
-              {frontmatter.champion ? (
-                <a href={`https://github.com/${frontmatter.champion}`}>
-                  @{frontmatter.champion}
-                </a>
-              ) : (
-                "-"
-              )}
-            </dd>
-            <dt>Updated</dt>
-            <dd>{formatDate(frontmatter.updatedAt)}</dd>
-          </dl>
-          <ul className="link-list">
-            {frontmatter.issueUrl && (
-              <li>
-                <a href={frontmatter.issueUrl}>Issue</a>
-              </li>
-            )}
-            {frontmatter.prUrl ? (
-              <li>
-                <a href={frontmatter.prUrl}>Pull request</a>
-              </li>
-            ) : null}
-            {frontmatter.rfcDocUrl ? (
-              <li>
-                <a href={frontmatter.rfcDocUrl}>RFC document</a>
-              </li>
-            ) : null}
-            {frontmatter.wgDiscussionUrl ? (
-              <li>
-                <a href={frontmatter.wgDiscussionUrl}>WG discussion</a>
-              </li>
-            ) : null}
-          </ul>
-          {frontmatter.related && frontmatter.related.length > 0 ? (
-            <>
-              <h3>Related</h3>
-              <ul className="link-list">
-                {frontmatter.related.map((related) => (
-                  <li key={related}>
-                    <a href={`/rfcs/${related}/`}>
-                      {formatIdentifier(related)}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-        </aside>
-
-        <article className="markdown-body">
-          <Markdown content={contentBody} />
-          <RfcMeetings
-            meetings={meetings}
-            identifier={frontmatter.identifier}
-          />
-          <section className="detail-timeline">
-            <h2>Timeline</h2>
-            <div className="activity-groups detail-timeline-groups">
-              {timelineMonths.map((month) => (
-                <section className="activity-month" key={month.label}>
-                  <div className="activity-month-divider">
-                    <span>{month.label}</span>
-                  </div>
-                  <ul className="detail-timeline-list">
-                    {month.events.map((event, index) => (
-                      <li
-                        key={`${month.label}:${event.type}:${event.date}:${index}`}
-                      >
-                        {renderActivityEvent(event)}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
-          </section>
-        </article>
-      </section>
+      <article className="markdown-body rfc-detail">
+        <RfcOverview rfc={frontmatter} />
+        <Markdown content={contentBody} />
+        <RfcMeetings meetings={meetings} identifier={frontmatter.identifier} />
+        <section className="detail-timeline">
+          <h2>Timeline</h2>
+          <div className="activity-groups detail-timeline-groups">
+            {timelineMonths.map((month) => (
+              <section className="activity-month" key={month.label}>
+                <div className="activity-month-divider">
+                  <span>{month.label}</span>
+                </div>
+                <ul className="detail-timeline-list">
+                  {month.events.map((event, index) => (
+                    <li
+                      key={`${month.label}:${event.type}:${event.date}:${index}`}
+                    >
+                      {renderActivityEvent(
+                        event,
+                        frontmatter.identifier,
+                        byHref,
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </section>
+      </article>
     </Layout>
   );
 }
@@ -1068,14 +1150,60 @@ function hideMarkdownComments(node: Nodes) {
   else if ("children" in node) node.children.forEach(hideMarkdownComments);
 }
 
+function emphasizeNotes(node: Nodes, ranges: NoteQuote["highlights"]) {
+  if (!("children" in node)) return;
+  for (let i = node.children.length - 1; i >= 0; i--) {
+    const child = node.children[i];
+    if (child.type !== "text" && child.type !== "inlineCode") {
+      emphasizeNotes(child, ranges);
+      continue;
+    }
+    const start = child.position?.start.offset,
+      end = child.position?.end.offset;
+    if (start === undefined || end === undefined) continue;
+    const hits = ranges.filter(
+      (range) => range.end > start && range.start < end,
+    );
+    if (!hits.length) continue;
+    if (
+      child.type === "inlineCode" ||
+      hits.some((range) => range.start <= start && range.end >= end)
+    ) {
+      node.children.splice(i, 1, { type: "strong", children: [child] });
+      continue;
+    }
+    const boundaries = [
+      ...new Set([
+        0,
+        child.value.length,
+        ...hits
+          .flatMap((hit) => [hit.start - start, hit.end - start])
+          .filter((n) => n > 0 && n < child.value.length),
+      ]),
+    ].sort((a, b) => a - b);
+    const parts: PhrasingContent[] = boundaries.slice(1).map((end, j) => {
+      const offset = boundaries[j],
+        text = { type: "text" as const, value: child.value.slice(offset, end) };
+      return hits.some(
+        (hit) => hit.start <= start + offset && hit.end > start + offset,
+      )
+        ? { type: "strong", children: [text] }
+        : text;
+    });
+    node.children.splice(i, 1, ...parts);
+  }
+}
+
 function Markdown({
   content,
   source,
   agenda,
+  highlights,
 }: {
   content: string;
   source?: MeetingSource;
   agenda?: boolean;
+  highlights?: NoteQuote["highlights"];
 }) {
   const resolve = (url: string | undefined, image = false) => {
     if (
@@ -1118,6 +1246,7 @@ function Markdown({
         remarkGfm,
         () => (tree: Root) => {
           hideMarkdownComments(tree);
+          if (highlights) emphasizeNotes(tree, highlights);
           if (agenda) {
             const first = tree.children.findIndex(
               (node) => node.type === "heading" && node.depth === 1,
@@ -1181,7 +1310,11 @@ function eventSentence(event: Event): string {
   return `${summarizeEvent(event)}.`;
 }
 
-function renderActivityEvent(event: Event): React.ReactNode {
+function renderActivityEvent(
+  event: Event,
+  identifier: string,
+  meetings: Map<string, Meeting>,
+): React.ReactNode {
   if (event.type === "commitsPushed") {
     if (event.commits.length === 1) {
       const commit = event.commits[0];
@@ -1284,16 +1417,21 @@ function renderActivityEvent(event: Event): React.ReactNode {
           on {formatDate(event.date)}
         </>
       );
-    case "wgNotes":
+    case "wgNotes": {
+      const meeting = meetings.get(event.href.split("#")[0]);
       return (
         <>
-          Mentioned in{" "}
+          Discussed in{" "}
           <a href={event.href}>
-            {event.group ? groupName(event.group) : "WG"} notes
-          </a>{" "}
-          on {formatDate(event.date)}
+            {formatDate(event.date)}{" "}
+            {groupName(meeting?.group ?? event.group ?? "WG")}
+          </a>
+          {meeting && (
+            <MeetingNoteQuotes meeting={meeting} identifier={identifier} />
+          )}
         </>
       );
+    }
   }
 }
 

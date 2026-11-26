@@ -11,6 +11,11 @@ AI WG, Composite Schemas WG, Federation Spec, GraphiQL, GraphQL.js and its WG,
 Golden Path, and GAPs. Source documents supplement proposal histories. Meetings
 link to proposals independently of discovery.
 
+For the core WG, sync reads the working tree at `~/Dev/graphql/graphql-wg` when
+available, including locally annotated notes. Otherwise it uses its managed
+checkout. Paired markers such as `<!--BEGIN[graphql/graphql-spec#1211]-->` and
+`<!--END[graphql/graphql-spec#1211]-->` identify passages for a tracked RFC.
+
 Core spec PRs use bare numeric routes such as `/rfcs/42/`. Other projects use
 their repository alias, such as `/rfcs/js-42/` or `/rfcs/jswg-42/`.
 The RFC index and activity feed group repositories by working group. GraphQL.js

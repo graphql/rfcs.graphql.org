@@ -107,6 +107,14 @@ export interface MeetingSource {
   section?: string;
 }
 
+export interface NoteQuote {
+  start: number;
+  markdown: string;
+  section: string;
+  title?: string;
+  highlights: { start: number; end: number }[];
+}
+
 export interface Meeting {
   youtubeVideoId?: string;
   id: string;
@@ -116,5 +124,10 @@ export interface Meeting {
   agenda: MeetingSource;
   agendaSummary?: { text: string; identifiers: string[] }[];
   notes: MeetingSource[];
-  references: { identifier: string; agenda?: boolean; section?: string }[];
+  references: {
+    identifier: string;
+    agenda?: boolean;
+    section?: string;
+    quotes?: NoteQuote[];
+  }[];
 }
