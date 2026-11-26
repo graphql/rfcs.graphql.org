@@ -3,7 +3,9 @@
 
 # rfcs.graphql.org
 
-The tracker discovers proposals from GitHub issues, pull requests, and discussions.
+Project issues, pull requests, and discussions enter the tracker when they carry
+an explicit `RFC` label or an RFC stage label such as `💡 Proposal (RFC 1)`.
+The core GraphQL WG also retains its historical Ideas discussions and RFC documents.
 It covers the main GraphQL specification and working group, GraphQL over HTTP,
 AI WG, Composite Schemas WG, Federation Spec, GraphiQL, GraphQL.js and its WG,
 Golden Path, and GAPs. Source documents supplement proposal histories. Meetings

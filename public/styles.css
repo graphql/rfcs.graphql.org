@@ -385,3 +385,19 @@ h2 {
 .meeting-activity time, .meeting-activity-links, .meeting-activity p { font-size: .9rem; }
 .meeting-activity p { margin: .35rem 0; }
 .meeting-activity-links { margin-top: .4rem; }
+
+.meeting-activity-video {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 1rem;
+}
+.meeting-activity-video iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: .35rem;
+}
+@media (max-width: 640px) {
+  .meeting-activity-video { grid-template-columns: 1fr; }
+}

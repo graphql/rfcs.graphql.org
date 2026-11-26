@@ -108,6 +108,7 @@ export interface MeetingSource {
 }
 
 export interface Meeting {
+  youtubeVideoId?: string;
   id: string;
   group: string;
   date: string;

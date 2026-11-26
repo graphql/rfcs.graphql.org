@@ -129,7 +129,6 @@ function nodeLinks(node: object, definitions: boolean): string[] {
 
 type RfcSource = {
   identifier: string;
-  sourceUrls?: Set<string>;
   issueUrl?: string;
   prUrl?: string;
   wgDiscussionUrl?: string;
@@ -143,7 +142,6 @@ export async function collectMeetings(
   const identifiers = new Map<string, Set<string>>();
   for (const record of records) {
     for (const href of [
-      ...(record.sourceUrls ?? []),
       record.issueUrl,
       record.prUrl,
       record.wgDiscussionUrl,

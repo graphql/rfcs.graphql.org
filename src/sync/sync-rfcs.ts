@@ -7,6 +7,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import YAML from "yaml";
 import { projects, projectName } from "../lib/projects.ts";
 import { groupIds, meetingHref } from "../lib/meetings.ts";
+import { attachMeetingVideos } from "./meeting-videos.ts";
 import { collectMeetings } from "./meetings.ts";
 import {
   escapeInlineMarkdown,
@@ -200,7 +201,6 @@ query GetIssueEvents(
 `;
 
 interface RfcRecord {
-  sourceUrls?: Set<string>;
   identifier: string;
   title: string;
   shortname: string;
@@ -374,6 +374,7 @@ async function main(): Promise<void> {
     records.values(),
   );
 
+  await attachMeetingVideos(meetings);
   for (const meeting of meetings) {
     if (meeting.cancelled) continue;
     for (const { identifier, agenda, section } of meeting.references) {
@@ -1225,6 +1226,15 @@ async function writeGeneratedMarkdown(
     }),
   );
 
+  for (const entry of await fs.readdir(RFCS_DIR, { withFileTypes: true })) {
+    if (
+      entry.isFile() &&
+      entry.name.endsWith(".md") &&
+      !records.has(entry.name.slice(0, -3))
+    ) {
+      await fs.unlink(path.join(RFCS_DIR, entry.name));
+    }
+  }
   return summaries;
 }
 
@@ -1370,12 +1380,9 @@ interface ProjectItem extends DiscussionNode {
   lastEditedAt?: string;
   editor?: { login: string };
   mergedBy?: { login: string };
-  closingIssuesReferences?: { nodes: { url: string }[] };
   url: string;
   closedAt?: string;
   mergedAt?: string;
-  category?: { name: string };
-  files?: { nodes: { path: string }[] };
 }
 
 const documentOrigins: Record<string, Record<string, number>> = {
@@ -1463,26 +1470,58 @@ async function projectDocuments(
 
 type ProjectItemKind = "issues" | "pullRequests" | "discussions";
 
+// GitHub Discussions has no labels argument on the repository connection.
 async function* projectItems(
   repo: string,
-  alias: string,
   kind: ProjectItemKind,
+  labels: string[],
   token: string,
 ): AsyncGenerator<ProjectItem> {
+  const fields =
+    "id number url title body author{login} lastEditedAt editor{login} createdAt updatedAt labels(first:100){nodes{name}}";
+  if (kind === "discussions") {
+    const seen = new Set<string>();
+    for (const label of labels) {
+      let after: string | null = null;
+      do {
+        const result: {
+          search: {
+            nodes: ProjectItem[];
+            pageInfo: { hasNextPage: boolean; endCursor: string };
+          };
+        } = await graphql(
+          `query($search:String!,$after:String){search(query:$search,type:DISCUSSION,first:100,after:$after){nodes{... on Discussion{${fields}}} pageInfo{hasNextPage endCursor}}}`,
+          {
+            search: `repo:graphql/${repo} label:${JSON.stringify(label)}`,
+            after,
+            headers: { authorization: `token ${token}` },
+          },
+        );
+        for (const item of result.search.nodes) {
+          if (
+            !seen.has(item.id) &&
+            item.labels.nodes.some(
+              (node) => node?.name && labels.includes(node.name),
+            )
+          ) {
+            seen.add(item.id);
+            yield item;
+          }
+        }
+        after = result.search.pageInfo.hasNextPage
+          ? result.search.pageInfo.endCursor
+          : null;
+      } while (after);
+    }
+    return;
+  }
   const extra =
-    kind === "discussions"
-      ? "category {name}"
-      : kind === "issues"
-        ? "closedAt"
-        : "closedAt mergedAt mergedBy{login} closingIssuesReferences(first:50){nodes{url}}" +
-          (["fed", "gap", "ai", "http"].includes(alias)
-            ? " files(first:100){nodes{path}}"
-            : "");
-  const query = `query($repo:String!, $after:String){
+    kind === "issues" ? "closedAt" : "closedAt mergedAt mergedBy{login}";
+  const query = `query($repo:String!, $after:String, $labels:[String!]!){
         repository(owner:"graphql",name:$repo){
-          items:${kind}(first:100,after:$after){
+          items:${kind}(first:100,after:$after,labels:$labels){
             pageInfo{hasNextPage endCursor}
-            nodes{id number url title body author{login} lastEditedAt editor{login} createdAt updatedAt labels(first:50){nodes{name}} ${extra}}
+            nodes{${fields} ${extra}}
           }
         }
       }`;
@@ -1497,6 +1536,7 @@ async function* projectItems(
       };
     } = await graphql(query, {
       repo,
+      labels,
       after,
       headers: { authorization: `token ${token}` },
     });
@@ -1508,147 +1548,99 @@ async function* projectItems(
 
 async function collectProjects(records: Map<string, RfcRecord>, token: string) {
   const legacy = new Set(records.keys());
-  const origins = new Map<string, RfcRecord>();
   for (const { repo, alias } of projects) {
-    const trackedPrs = new Map<string, Set<RfcRecord>>();
+    const result = await graphql<{
+      repository: { labels: { nodes: { name: string }[] } };
+    }>(
+      `
+        query ($repo: String!) {
+          repository(owner: "graphql", name: $repo) {
+            labels(first: 100, query: "RFC") {
+              nodes {
+                name
+              }
+            }
+          }
+        }
+      `,
+      { repo, headers: { authorization: `token ${token}` } },
+    );
+    const rfcLabels = result.repository.labels.nodes
+      .map((label) => label.name)
+      .filter(
+        (name) => /^rfc$/i.test(name) || /(?:^|\()RFC [0123X]\)?$/i.test(name),
+      );
+    if (!rfcLabels.length) continue;
+    const trackedPrs = new Map<string, RfcRecord>();
     const documents = await projectDocuments(repo, token);
     console.log("Collecting proposals from graphql/" + repo);
     for (const kind of ["issues", "pullRequests", "discussions"] as const) {
-      for await (const item of projectItems(repo, alias, kind, token)) {
+      for await (const item of projectItems(repo, kind, rfcLabels, token)) {
         const labels = item.labels.nodes.map((label) => label?.name ?? "");
-        const paths = item.files?.nodes.map((file) => file.path) ?? [];
-        const gaps = new Set(
-          paths.flatMap((path) => {
-            const match = /^(?:gaps\/)?GAP-(\d+)\//i.exec(path);
-            // PR 2 predates the convention of naming a GAP directory after its PR.
-            return match ? [match[1] === "1001" ? 2 : Number(match[1])] : [];
-          }),
+        const identifier = `${alias}-${item.number}`;
+        if (legacy.has(identifier))
+          throw new Error(
+            `Project route collides with existing RFC ${identifier}`,
+          );
+        const record = getOrCreateRecord(
+          records,
+          identifier,
+          tidyTitle(item.title),
         );
-        const qualifies =
-          Object.values(documents).includes(item.number) ||
-          /^(?:\[(?:RFC|Proposal)\]|(?:RFC|Proposal)\s*:)|^(?:docs:\s*)?(?:add|adds|introduce)\b.*\b(?:RFC|proposal)\s*$/i.test(
-            item.title,
-          ) ||
-          labels.some((label) => /\b(?:rfc|proposal)\b/i.test(label)) ||
-          item.category?.name === "Ideas" ||
-          (alias === "fed" &&
-            paths.some((path) => /^(spec|rfcs)\//.test(path)) &&
-            !/\b(?:typos?|formatting|markdownlint|fix markdown|broken links)\b/i.test(
-              item.title,
-            )) ||
-          (alias === "jswg" && item.number === 125) ||
-          (alias === "gold" && item.number === 17) ||
-          (alias === "ai" && [32, 33, 54, 79].includes(item.number));
-        const documentNumbers = new Set(
-          paths.flatMap((path) => {
-            const number = path.startsWith("rfcs/")
-              ? documents[path.slice(5)]
-              : undefined;
-            return number === undefined ? [] : [number];
-          }),
-        );
-        const targets =
-          alias === "gap"
-            ? gaps
-            : documentNumbers.size
-              ? documentNumbers
-              : [item.number];
-        const linked =
-          item.closingIssuesReferences?.nodes.flatMap(
-            (issue) => origins.get(issue.url) ?? [],
-          ) ?? [];
-        if (
-          alias === "js" &&
-          kind === "pullRequests" &&
-          labels.includes("spec RFC")
-        ) {
-          for (const match of item.body.matchAll(
-            /https:\/\/github\.com\/graphql\/graphql-spec\/pull\/(\d+)/gi,
-          )) {
-            const core = records.get(match[1]);
-            if (core && !linked.includes(core)) linked.push(core);
-          }
+        const actor = item.author?.login ?? null;
+        const previous =
+          record.prUrl ?? record.wgDiscussionUrl ?? record.issueUrl;
+        if (previous && previous !== item.url)
+          throw new Error(
+            `Conflicting origins for ${record.identifier}: ${previous}, ${item.url}`,
+          );
+
+        record.title = record.shortname = tidyTitle(item.title);
+        record.stage = labelsToStage(labels);
+        record.champion = actor ?? undefined;
+        record.closedAt = item.closedAt ?? undefined;
+        record.mergedAt = item.mergedAt ?? undefined;
+        if (kind === "discussions") {
+          record.wgDiscussionUrl = item.url;
+          record.discussionBody = pruneMarkdown(item.body);
+        } else {
+          if (kind === "issues") record.issueUrl = item.url;
+          else record.prUrl = item.url;
+          record.prBody = pruneMarkdown(item.body);
         }
-        if (
-          !linked.length &&
-          (alias === "gap" ? !gaps.size : !qualifies && !documentNumbers.size)
-        )
-          continue;
-        for (const record of linked.length
-          ? linked
-          : Array.from(targets, (number) =>
-              getOrCreateRecord(
-                records,
-                alias + "-" + number,
-                tidyTitle(item.title),
-              ),
-            )) {
-          if (!linked.includes(record) && legacy.has(record.identifier))
-            throw new Error(
-              `Project route collides with existing RFC ${record.identifier}`,
-            );
-          (record.sourceUrls ??= new Set()).add(item.url);
-          const actor = item.author?.login ?? null;
-          if (record.identifier === alias + "-" + item.number) {
-            const previous =
-              record.prUrl ?? record.wgDiscussionUrl ?? record.issueUrl;
-            if (previous && previous !== item.url)
-              throw new Error(
-                `Conflicting origins for ${record.identifier}: ${previous}, ${item.url}`,
-              );
-            origins.set(item.url, record);
-            record.title = record.shortname = tidyTitle(item.title);
-            record.stage = labelsToStage(labels);
-            record.champion = actor ?? undefined;
-            record.closedAt = item.closedAt ?? undefined;
-            record.mergedAt = item.mergedAt ?? undefined;
-            if (kind === "discussions") {
-              record.wgDiscussionUrl = item.url;
-              record.discussionBody = pruneMarkdown(item.body);
-            } else {
-              if (kind === "issues") record.issueUrl = item.url;
-              else record.prUrl = item.url;
-              record.prBody = pruneMarkdown(item.body);
-            }
-          }
-          if (kind === "pullRequests") {
-            const targets = trackedPrs.get(item.id) ?? new Set();
-            targets.add(record);
-            trackedPrs.set(item.id, targets);
-          }
-          if (item.lastEditedAt)
-            addEvent(record, {
-              type: "topCommentEdited",
-              href: item.url,
-              date: item.lastEditedAt,
-              actor: item.editor?.login ?? null,
-            });
-          record.updatedAt = maxDate(record.updatedAt, item.updatedAt);
+        if (kind === "pullRequests") trackedPrs.set(item.id, record);
+        if (item.lastEditedAt)
           addEvent(record, {
-            type:
-              kind === "issues"
-                ? "issueCreated"
-                : kind === "discussions"
-                  ? "wgDiscussionCreated"
-                  : "prCreated",
+            type: "topCommentEdited",
             href: item.url,
-            date: item.createdAt,
-            actor,
+            date: item.lastEditedAt,
+            actor: item.editor?.login ?? null,
           });
-          if (item.closedAt)
-            addEvent(record, {
-              type: item.mergedAt
-                ? "prMerged"
-                : kind === "issues"
-                  ? "issueClosed"
-                  : "prClosed",
-              href: item.url,
-              date: item.mergedAt ?? item.closedAt,
-              actor: item.mergedBy?.login ?? null,
-            });
-          for (const related of parseRelated(item.body, alias + "-"))
-            record.related.add(related);
-        }
+        record.updatedAt = maxDate(record.updatedAt, item.updatedAt);
+        addEvent(record, {
+          type:
+            kind === "issues"
+              ? "issueCreated"
+              : kind === "discussions"
+                ? "wgDiscussionCreated"
+                : "prCreated",
+          href: item.url,
+          date: item.createdAt,
+          actor,
+        });
+        if (item.closedAt)
+          addEvent(record, {
+            type: item.mergedAt
+              ? "prMerged"
+              : kind === "issues"
+                ? "issueClosed"
+                : "prClosed",
+            href: item.url,
+            date: item.mergedAt ?? item.closedAt,
+            actor: item.mergedBy?.login ?? null,
+          });
+        for (const related of parseRelated(item.body, alias + "-"))
+          record.related.add(related);
       }
     }
     const ids = [...trackedPrs.keys()];
@@ -1687,18 +1679,11 @@ async function collectProjects(records: Map<string, RfcRecord>, token: string) {
         },
       );
       for (const pr of response.nodes)
-        for (const record of trackedPrs.get(pr.id)!)
-          addCommitEvents(record, pr.commits, pr.url);
+        addCommitEvents(trackedPrs.get(pr.id)!, pr.commits, pr.url);
     }
     for (const [file, number] of Object.entries(documents)) {
-      const record =
-        records.get(alias + "-" + number) ??
-        [...records.values()].find((record) =>
-          record.sourceUrls?.has(
-            `https://github.com/graphql/${repo}/pull/${number}`,
-          ),
-        );
-      if (!record) throw new Error(`Missing origin for ${repo}/rfcs/${file}`);
+      const record = records.get(alias + "-" + number);
+      if (!record) continue;
       const directory = path.join(TEMP_DIR, repo);
       const relative = "rfcs/" + file;
       record.rfcDocUrl = `https://github.com/graphql/${repo}/blob/main/${relative}`;

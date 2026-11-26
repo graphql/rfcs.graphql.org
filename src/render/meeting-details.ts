@@ -44,6 +44,20 @@ function recording(markdown: string) {
   }
 }
 
+function youtubeId(href: string | undefined) {
+  if (!href) return;
+  const url = URL.parse(href);
+  if (!url) return;
+  const id =
+    url.hostname === "youtu.be"
+      ? url.pathname.slice(1)
+      : /^(www\.)?youtube\.com$/.test(url.hostname)
+        ? (url.searchParams.get("v") ??
+          url.pathname.match(/^\/live\/([^/]+)/)?.[1])
+        : undefined;
+  return id && /^[\w-]{11}$/.test(id) ? id : undefined;
+}
+
 export function meetingDetails(meeting: Meeting) {
   const clean = (markdown: string) => markdown.replace(/<!--[\s\S]*?-->/g, "");
   const agenda = clean(meeting.agenda.content);
@@ -55,10 +69,15 @@ export function meetingDetails(meeting: Meeting) {
     agenda,
     /^#{1,6}\s+(?:agenda|agenda items|topics)\s*:?\s*$/i,
   ).filter((line) => /^(?:\d+[.)]|[-*+])\s+\S/.test(line)).length;
+  const recordingUrl = [...notes, agenda].map(recording).find(Boolean);
+  const videoId = youtubeId(recordingUrl) ?? meeting.youtubeVideoId;
   return {
+    videoId,
     attendees: actual ?? listedAttendees(agenda),
     confirmed: actual !== undefined,
     topics,
-    video: [...notes, agenda].map(recording).find(Boolean),
+    video:
+      recordingUrl ??
+      (videoId ? "https://www.youtube.com/watch?v=" + videoId : undefined),
   };
 }

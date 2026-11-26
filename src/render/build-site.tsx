@@ -339,26 +339,45 @@ function MeetingActivityCard({ meeting }: { meeting: Meeting }) {
       );
   }
   return (
-    <li className="meeting-activity">
-      <div className="meeting-activity-heading">
-        <strong>
-          <a href={href}>{groupName(meeting.group)} meeting</a>
-        </strong>
-        <time dateTime={meeting.date}>{meeting.date}</time>
+    <li
+      className={
+        details.videoId
+          ? "meeting-activity meeting-activity-video"
+          : "meeting-activity"
+      }
+    >
+      <div>
+        <div className="meeting-activity-heading">
+          <strong>
+            <a href={href}>{groupName(meeting.group)} meeting</a>
+          </strong>
+          <time dateTime={meeting.date}>{meeting.date}</time>
+        </div>
+        {stats.length > 0 && <p>{stats.join(" · ")}</p>}
+        <div className="meeting-activity-links">
+          {meeting.cancelled && <strong>Cancelled</strong>}
+          <a href={meeting.agenda.href}>Agenda</a>
+          {note ? (
+            <a href={note.section ? href + "#" + note.section : note.href}>
+              Notes
+            </a>
+          ) : (
+            !meeting.cancelled && <span>Notes pending</span>
+          )}
+          {details.video && <a href={details.video}>Video recording</a>}
+        </div>
       </div>
-      {stats.length > 0 && <p>{stats.join(" · ")}</p>}
-      <div className="meeting-activity-links">
-        {meeting.cancelled && <strong>Cancelled</strong>}
-        <a href={meeting.agenda.href}>Agenda</a>
-        {note ? (
-          <a href={note.section ? href + "#" + note.section : note.href}>
-            Notes
-          </a>
-        ) : (
-          !meeting.cancelled && <span>Notes pending</span>
-        )}
-        {details.video && <a href={details.video}>Video recording</a>}
-      </div>
+      {details.videoId && (
+        <iframe
+          src={"https://www.youtube-nocookie.com/embed/" + details.videoId}
+          loading="lazy"
+          title={
+            groupName(meeting.group) + " meeting recording, " + meeting.date
+          }
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+      )}
     </li>
   );
 }
@@ -592,8 +611,20 @@ function ActivityPage({
   data: SiteData;
   project?: { alias: string; name: string };
 }) {
-  const meetings = data.meetings ?? [];
-  const activityGroups = groupActivityByMonth(data.activity);
+  const today = data.generatedAt.slice(0, 10);
+  const meetings = (data.meetings ?? []).filter((meeting) => {
+    if (meeting.cancelled || meeting.date >= today) return false;
+    const { attendees, video } = meetingDetails(meeting);
+    return (attendees ?? 0) > 0 && (meeting.notes.length > 0 || Boolean(video));
+  });
+  const visibleMeetings = new Set(meetings.map(meetingHref));
+  const activityGroups = groupActivityByMonth(
+    data.activity.filter(
+      ({ event }) =>
+        (event.type !== "wgAgenda" && event.type !== "wgNotes") ||
+        visibleMeetings.has(event.href.split("#")[0]),
+    ),
+  );
   const monthKeys = [
     ...new Set([
       ...activityGroups.map((month) => month.key),
