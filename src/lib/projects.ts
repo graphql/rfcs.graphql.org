@@ -1,3 +1,23 @@
+// Add a tracked repository with {} to scan its rfcs/ directory. Entries map
+// exact filenames to proposal numbers when the introducing PR is ambiguous
+// or points to a different proposal. See “Project RFC documents” in README.md.
+export const documentOrigins: Record<string, Record<string, number>> = {
+  "graphql-federation-spec": {},
+  "golden-path-wg": {},
+  "composite-schemas-wg": {},
+  "ai-wg": {
+    "semantic-introspection.md": 64,
+    "relay_style_mock_store.pdf": 165,
+  },
+  "graphql-over-http": {
+    "Batching.md": 40,
+    "GraphQLOverSSE.md": 163,
+    "GraphQLOverWebSocket.md": 140,
+    "IncrementalDelivery.md": 124,
+    "PersistedOperations.md": 253,
+  },
+};
+
 // Each source keeps its public RFC prefix. Sources listed together share one
 // RFC index, activity feed, and meeting series.
 export const projectFilters = [

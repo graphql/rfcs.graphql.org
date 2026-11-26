@@ -6,7 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { execFile as execFileCallback } from "node:child_process";
 import YAML from "yaml";
-import { projects, projectName } from "../lib/projects.ts";
+import { documentOrigins, projects, projectName } from "../lib/projects.ts";
 import { groupIds, meetingHref } from "../lib/meetings.ts";
 import { attachMeetingVideos } from "./meeting-videos.ts";
 import { collectMeetings } from "./meetings.ts";
@@ -1389,23 +1389,6 @@ interface ProjectItem extends DiscussionNode {
   closedAt?: string;
   mergedAt?: string;
 }
-
-const documentOrigins: Record<string, Record<string, number>> = {
-  "graphql-federation-spec": {},
-  "golden-path-wg": {},
-  "composite-schemas-wg": {},
-  "ai-wg": {
-    "semantic-introspection.md": 64,
-    "relay_style_mock_store.pdf": 165,
-  },
-  "graphql-over-http": {
-    "Batching.md": 40,
-    "GraphQLOverSSE.md": 163,
-    "GraphQLOverWebSocket.md": 140,
-    "IncrementalDelivery.md": 124,
-    "PersistedOperations.md": 253,
-  },
-};
 
 async function projectDocuments(
   repo: string,

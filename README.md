@@ -21,6 +21,25 @@ their repository alias, such as `/rfcs/js-42/` or `/rfcs/jswg-42/`.
 The RFC index and activity feed group repositories by working group. GraphQL.js
 and its WG share one filter, as do Composite Schemas WG and Federation Spec.
 
+## Project RFC documents
+
+Edit `documentOrigins` in [the project configuration](src/lib/projects.ts) to
+attach documents to tracked proposals.
+
+1. To enable a tracked project, add its repository name with an empty object,
+   e.g. `"graphql-federation-spec": {}`. The sync scans Markdown and PDF files
+   directly under `rfcs/`, skipping README and template files.
+2. By default, the sync looks up the commit that added each file and uses its
+   associated PR number. If GitHub returns zero or multiple PRs, the sync logs
+   `Review origin of …` and skips that file. To resolve the warning, or correct
+   an inferred origin, check the proposal and add its number under the exact
+   filename. For example, `"Batching.md": 40` under `graphql-over-http`
+   attaches the document to `http-40`. Each document in a repository must
+   point to a distinct proposal.
+3. Run `yarn sync-rfcs` with `GITHUB_TOKEN` set and check the proposal’s
+   `rfcDocUrl` in `generated/site.json`. The proposal must already be tracked
+   for the sync to attach the document.
+
 ## Repo setup
 
 This repo does two separate jobs:
