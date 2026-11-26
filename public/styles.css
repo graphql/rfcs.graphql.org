@@ -448,3 +448,12 @@ h2 {
   .activity-card-top { flex-direction: column; gap: .25rem; }
   .activity-card-top > span { color: var(--muted); font-weight: 400; }
 }
+
+.meeting-agenda-summary {
+  margin: .65rem 0;
+  padding-inline-start: 1.3rem;
+  list-style: disc;
+  overflow-wrap: anywhere;
+}
+.meeting-agenda-summary li + li { margin-top: .25rem; }
+.meeting-agenda-summary a { white-space: nowrap; font-weight: 600; }

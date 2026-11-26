@@ -1,3 +1,4 @@
+import type { Nodes, Root } from "mdast";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import remarkParse from "remark-parse";
@@ -111,8 +112,20 @@ function noteParts(
   }));
 }
 
-function nodeLinks(node: object, definitions: boolean): string[] {
+function nodeLinks(
+  node: object,
+  definitions: boolean,
+  references?: Map<string, string>,
+): string[] {
   const type = "type" in node ? node.type : undefined;
+  if (
+    type === "linkReference" &&
+    "identifier" in node &&
+    typeof node.identifier === "string"
+  ) {
+    const href = references?.get(node.identifier);
+    return href ? [href] : [];
+  }
   if (type === "code" || type === "inlineCode" || type === "html") return [];
   if (
     "url" in node &&
@@ -123,8 +136,52 @@ function nodeLinks(node: object, definitions: boolean): string[] {
   if ("value" in node && type === "text" && typeof node.value === "string")
     return links(node.value);
   return "children" in node && Array.isArray(node.children)
-    ? node.children.flatMap((child: object) => nodeLinks(child, definitions))
+    ? node.children.flatMap((child: object) =>
+        nodeLinks(child, definitions, references),
+      )
     : [];
+}
+
+function plainText(node: Nodes): string {
+  if (node.type === "list" || node.type === "html") return "";
+  if (node.type === "image" || node.type === "imageReference")
+    return node.alt ?? "";
+  if (node.type === "break") return " ";
+  if ("value" in node) return node.value;
+  return "children" in node
+    ? node.children.map(plainText).join(node.type === "listItem" ? " " : "")
+    : "";
+}
+
+function agendaSummary(
+  tree: Root,
+  match: (urls: string[]) => string[],
+  known: Set<string>,
+) {
+  const definitions = new Map(
+    tree.children.flatMap((node) =>
+      node.type === "definition" ? [[node.identifier, node.url] as const] : [],
+    ),
+  );
+  const summary: NonNullable<Meeting["agendaSummary"]> = [];
+  let agendaDepth = 0;
+  for (const node of tree.children) {
+    if (node.type === "heading") {
+      if (/^(?:agenda|agenda items|topics):?$/i.test(plainText(node).trim()))
+        agendaDepth = node.depth;
+      else if (node.depth <= agendaDepth) agendaDepth = 0;
+    }
+    if (!agendaDepth || node.type !== "list") continue;
+    for (const item of node.children) {
+      const text = plainText(item).replace(/\s+/g, " ").trim();
+      if (!text || /\(\d+m, Host\)$/.test(text)) continue;
+      const identifiers = new Set(match(nodeLinks(item, false, definitions)));
+      for (const ref of text.matchAll(/\bRFC\s+#([0-9]+)\b/gi))
+        if (known.has(ref[1])) identifiers.add(ref[1]);
+      summary.push({ text, identifiers: [...identifiers] });
+    }
+  }
+  return summary;
 }
 
 type RfcSource = {
@@ -140,8 +197,12 @@ export async function collectMeetings(
   records: Iterable<RfcSource>,
 ): Promise<Meeting[]> {
   const identifiers = new Map<string, Set<string>>();
+  const known = new Set<string>();
   for (const record of records) {
+    known.add(record.identifier);
     for (const href of [
+      `https://rfcs.graphql.org/rfcs/${record.identifier}/`,
+      `/rfcs/${record.identifier}/`,
       record.issueUrl,
       record.prUrl,
       record.wgDiscussionUrl,
@@ -180,15 +241,21 @@ export async function collectMeetings(
               .replace(/\.md$/i, "")
               .replace(/[^\w.-]/g, "-")}`
           : date;
+        const tree = markdown.parse(agenda.content);
+        const summary = agendaSummary(tree, match, known);
         const meeting: Meeting = {
           id,
           date,
           group,
           agenda,
+          agendaSummary: summary,
           notes: [],
           cancelled: looksLikeItMightHaveBeenCancelled(agenda.content),
           references: [
-            ...new Set(match(nodeLinks(markdown.parse(agenda.content), true))),
+            ...new Set([
+              ...match(nodeLinks(tree, true)),
+              ...summary.flatMap((item) => item.identifiers),
+            ]),
           ].map((identifier) => ({ identifier, agenda: true })),
         };
         meetings.push(meeting);

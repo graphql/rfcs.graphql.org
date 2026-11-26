@@ -114,6 +114,7 @@ export interface Meeting {
   date: string;
   cancelled: boolean;
   agenda: MeetingSource;
+  agendaSummary?: { text: string; identifiers: string[] }[];
   notes: MeetingSource[];
   references: { identifier: string; agenda?: boolean; section?: string }[];
 }

@@ -377,10 +377,9 @@ function MeetingActivityCard({ meeting }: { meeting: Meeting }) {
       stats.push(
         `${details.attendees} ${details.confirmed ? "attendee" : "listed attendee"}${details.attendees === 1 ? "" : "s"}`,
       );
-    if (details.topics)
-      stats.push(
-        `${details.topics} agenda ${details.topics === 1 ? "item" : "items"}`,
-      );
+    const topics = meeting.agendaSummary?.length ?? details.topics;
+    if (topics)
+      stats.push(`${topics} agenda ${topics === 1 ? "item" : "items"}`);
     if (meeting.references.length)
       stats.push(
         `${meeting.references.length} linked RFC${meeting.references.length === 1 ? "" : "s"}`,
@@ -402,6 +401,23 @@ function MeetingActivityCard({ meeting }: { meeting: Meeting }) {
           <time dateTime={meeting.date}>{meeting.date}</time>
         </div>
         {stats.length > 0 && <p>{stats.join(" · ")}</p>}
+        {!!meeting.agendaSummary?.length && (
+          <ul className="meeting-agenda-summary" aria-label="Agenda summary">
+            {meeting.agendaSummary.map(({ text, identifiers }, index) => (
+              <li key={index}>
+                {text}
+                {identifiers.map((identifier) => (
+                  <React.Fragment key={identifier}>
+                    {" "}
+                    <a href={`/rfcs/${identifier}/`}>
+                      {formatIdentifier(identifier)}
+                    </a>
+                  </React.Fragment>
+                ))}
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="meeting-activity-links">
           {meeting.cancelled && <strong>Cancelled</strong>}
           <a href={meeting.agenda.href}>Agenda</a>
