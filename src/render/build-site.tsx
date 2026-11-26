@@ -93,28 +93,7 @@ async function main(): Promise<void> {
     pathname: "/",
   });
 
-  await writePage(
-    path.join(DIST_DIR, "rfcs", "index.html"),
-    <AllRfcsPage data={data} />,
-    {
-      title: "All GraphQL RFCs",
-      description:
-        "Complete listing of tracked GraphQL RFCs across all stages.",
-      pathname: "/rfcs/",
-    },
-  );
-
-  await writePage(
-    path.join(DIST_DIR, "activity", "index.html"),
-    <ActivityPage data={data} />,
-    {
-      title: "GraphQL RFC Activity",
-      description: "Chronological activity across tracked GraphQL RFCs.",
-      pathname: "/activity/",
-    },
-  );
-
-  for (const project of projectFilters) {
+  const projectPages = projectFilters.map((project) => {
     const rfcs = data.rfcs.filter(
       (rfc) => projectName(rfc.identifier) === project.name,
     );
@@ -132,6 +111,40 @@ async function main(): Promise<void> {
           meeting.references.some((ref) => identifiers.has(ref.identifier)),
       ),
     };
+    return { project, subset };
+  });
+  const availableSpecs = specFilters.filter((spec) =>
+    projectPages.some(
+      ({ project, subset }) =>
+        project.alias === spec.alias && subset.rfcs.length > 0,
+    ),
+  );
+  const activeProjects = projectPages
+    .filter(({ subset }) => subset.activity.length || subset.meetings?.length)
+    .map(({ project }) => project);
+
+  await writePage(
+    path.join(DIST_DIR, "rfcs", "index.html"),
+    <AllRfcsPage filters={availableSpecs} data={data} />,
+    {
+      title: "All GraphQL RFCs",
+      description:
+        "Complete listing of tracked GraphQL RFCs across all stages.",
+      pathname: "/rfcs/",
+    },
+  );
+
+  await writePage(
+    path.join(DIST_DIR, "activity", "index.html"),
+    <ActivityPage filters={activeProjects} data={data} />,
+    {
+      title: "GraphQL RFC Activity",
+      description: "Chronological activity across tracked GraphQL RFCs.",
+      pathname: "/activity/",
+    },
+  );
+
+  for (const { project, subset } of projectPages) {
     for (const section of ["rfcs", "activity"] as const) {
       const pathname = `/${section}/projects/${project.alias}/`;
       // Keep previously published repository filter URLs pointing at the shared view.
@@ -143,9 +156,17 @@ async function main(): Promise<void> {
         await writePage(
           path.join(DIST_DIR, section, "projects", alias, "index.html"),
           section === "rfcs" ? (
-            <AllRfcsPage data={subset} project={project} />
+            <AllRfcsPage
+              filters={availableSpecs}
+              data={subset}
+              project={project}
+            />
           ) : (
-            <ActivityPage data={subset} project={project} />
+            <ActivityPage
+              filters={activeProjects}
+              data={subset}
+              project={project}
+            />
           ),
           {
             pathname,
@@ -481,10 +502,12 @@ async function writeMeetings(meetings: Meeting[], today: string) {
   };
   const links = [
     { href: "/meetings/", name: "All groups" },
-    ...orderedMeetingGroups(meetings, today).map((group) => ({
-      href: `/meetings/${group}/`,
-      name: groupName(group),
-    })),
+    ...orderedMeetingGroups(meetings, today)
+      .filter((group) => meetings.some((meeting) => meeting.group === group))
+      .map((group) => ({
+        href: `/meetings/${group}/`,
+        name: groupName(group),
+      })),
   ];
   const archive = (pathname: string, title: string, entries: Meeting[]) => {
     const months = new Map<string, Meeting[]>();
@@ -678,19 +701,27 @@ const specFilters = [
   { alias: "compwg", name: "Federation Spec" },
 ];
 
-function ProjectLinks({ section, alias }: { section: string; alias?: string }) {
+type ProjectFilter = { alias: string; name: string };
+
+function ProjectLinks({
+  section,
+  alias,
+  filters,
+}: {
+  section: string;
+  alias?: string;
+  filters: ProjectFilter[];
+}) {
   const base = "/" + section + "/";
   return (
     <FilterLinks
       label="Filter by project"
       links={[
         { href: base, name: section === "rfcs" ? "All RFCs" : "All projects" },
-        ...(section === "rfcs" ? specFilters : projectFilters).map(
-          (project) => ({
-            name: project.name,
-            href: base + "projects/" + project.alias + "/",
-          }),
-        ),
+        ...filters.map((project) => ({
+          name: project.name,
+          href: base + "projects/" + project.alias + "/",
+        })),
       ]}
       current={alias ? base + "projects/" + alias + "/" : base}
     />
@@ -700,9 +731,11 @@ function ProjectLinks({ section, alias }: { section: string; alias?: string }) {
 function ActivityPage({
   data,
   project,
+  filters,
 }: {
   data: SiteData;
-  project?: { alias: string; name: string };
+  project?: ProjectFilter;
+  filters: ProjectFilter[];
 }) {
   const meetings = data.meetings ?? [];
   const activityGroups = groupActivityByMonth(data.activity);
@@ -724,7 +757,11 @@ function ActivityPage({
       <section className="hero hero-compact">
         <p className="eyebrow">Cross-repo timeline</p>
         <h1>{project ? project.name + " · " : ""}Recent activity</h1>
-        <ProjectLinks section="activity" alias={project?.alias} />
+        <ProjectLinks
+          filters={filters}
+          section="activity"
+          alias={project?.alias}
+        />
         <p className="lede">
           Proposal activity across GitHub issues, pull requests, discussions,
           documents, and working group meetings.
@@ -789,9 +826,11 @@ function ActivityPage({
 function AllRfcsPage({
   data,
   project,
+  filters,
 }: {
   data: SiteData;
-  project?: { alias: string; name: string };
+  project?: ProjectFilter;
+  filters: ProjectFilter[];
 }) {
   const allRfcs = [...data.rfcs].sort(compareRfcListEntries);
 
@@ -808,7 +847,7 @@ function AllRfcsPage({
           <h1>{title}</h1>
           <a href="/">View open RFCs</a>
         </div>
-        <ProjectLinks section="rfcs" alias={project?.alias} />
+        <ProjectLinks filters={filters} section="rfcs" alias={project?.alias} />
         <MobileRfcList rfcs={allRfcs} />
         <div className="table-wrap desktop-rfcs">
           <table className="rfc-table">
