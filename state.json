@@ -313,7 +313,7 @@
           "type": "labeled"
         }
       ],
-      "updatedAt": "2025-06-12T09:45:09Z"
+      "updatedAt": "2026-08-30T02:15:51Z"
     },
     "graphql/graphql-spec#1049": {
       "events": [
@@ -324,7 +324,7 @@
           "type": "labeled"
         }
       ],
-      "updatedAt": "2023-11-29T14:49:34Z"
+      "updatedAt": "2026-10-31T19:59:23Z"
     },
     "graphql/graphql-spec#1050": {
       "events": [
@@ -610,7 +610,7 @@
           "type": "unlabeled"
         }
       ],
-      "updatedAt": "2025-07-04T16:22:14Z"
+      "updatedAt": "2026-11-05T20:44:08Z"
     },
     "graphql/graphql-spec#1063": {
       "events": [
@@ -724,9 +724,15 @@
           "actor": "benjie",
           "date": "2025-03-10T11:35:58Z",
           "type": "edited"
+        },
+        {
+          "actor": "martinbonnin",
+          "date": "2026-03-19T18:12:21Z",
+          "label": "Stale",
+          "type": "labeled"
         }
       ],
-      "updatedAt": "2025-04-06T11:30:55Z"
+      "updatedAt": "2026-03-19T18:12:22Z"
     },
     "graphql/graphql-spec#1073": {
       "events": [
@@ -829,7 +835,24 @@
           "type": "edited"
         }
       ],
-      "updatedAt": "2026-03-08T11:35:09Z"
+      "updatedAt": "2026-11-16T19:16:25Z"
+    },
+    "graphql/graphql-spec#1082": {
+      "events": [
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T05:40:14Z",
+          "label": "Stale",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-25T12:10:20Z",
+          "label": "RFC 0",
+          "type": "labeled"
+        }
+      ],
+      "updatedAt": "2026-05-25T12:10:20Z"
     },
     "graphql/graphql-spec#1091": {
       "events": [
@@ -1086,7 +1109,7 @@
           "type": "unlabeled"
         }
       ],
-      "updatedAt": "2026-03-05T19:34:51Z"
+      "updatedAt": "2026-10-19T06:37:33Z"
     },
     "graphql/graphql-spec#1114": {
       "events": [
@@ -1206,6 +1229,35 @@
       ],
       "updatedAt": "2025-05-01T18:06:28Z"
     },
+    "graphql/graphql-spec#1145": {
+      "events": [
+        {
+          "actor": "martinbonnin",
+          "date": "2026-03-19T18:10:22Z",
+          "label": "Stale",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-03-19T19:03:17Z",
+          "label": "RFC 0",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-04-29T06:47:28Z",
+          "label": "RFC X",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-04-29T06:47:28Z",
+          "label": "RFC 0",
+          "type": "unlabeled"
+        }
+      ],
+      "updatedAt": "2026-04-29T06:47:28Z"
+    },
     "graphql/graphql-spec#1153": {
       "events": [
         {
@@ -1299,9 +1351,29 @@
           "actor": "benjie",
           "date": "2025-07-10T09:54:13Z",
           "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-08-03T10:00:57Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-08-03T10:51:34Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-08-06T20:01:14Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-08-06T20:01:33Z",
+          "type": "edited"
         }
       ],
-      "updatedAt": "2025-11-12T14:38:32Z"
+      "updatedAt": "2026-10-05T20:19:39Z"
     },
     "graphql/graphql-spec#1165": {
       "events": [
@@ -1325,9 +1397,15 @@
           "date": "2025-05-01T10:00:18Z",
           "label": "RFC 0",
           "type": "labeled"
+        },
+        {
+          "actor": "martinbonnin",
+          "date": "2026-03-19T18:13:03Z",
+          "label": "Stale",
+          "type": "labeled"
         }
       ],
-      "updatedAt": "2025-05-01T10:00:18Z"
+      "updatedAt": "2026-03-19T18:13:03Z"
     },
     "graphql/graphql-spec#1166": {
       "events": [
@@ -1573,9 +1651,26 @@
           "date": "2025-07-17T17:56:11Z",
           "label": "RFC 0",
           "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-09-17T14:07:19Z",
+          "type": "edited"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-09-17T17:55:53Z",
+          "label": "RFC 3",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-09-17T17:55:53Z",
+          "label": "RFC 0",
+          "type": "unlabeled"
         }
       ],
-      "updatedAt": "2025-07-17T21:30:14Z"
+      "updatedAt": "2026-09-17T17:56:07Z"
     },
     "graphql/graphql-spec#1184": {
       "events": [
@@ -1599,9 +1694,27 @@
           "actor": "benjie",
           "date": "2025-07-10T18:05:46Z",
           "type": "edited"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:08:24Z",
+          "label": "RFC 2",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:08:24Z",
+          "label": "RFC 0",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-09-04T11:33:02Z",
+          "label": "Next stage",
+          "type": "labeled"
         }
       ],
-      "updatedAt": "2025-07-23T13:37:18Z"
+      "updatedAt": "2026-09-17T20:15:28Z"
     },
     "graphql/graphql-spec#1193": {
       "events": [
@@ -1635,6 +1748,44 @@
         }
       ],
       "updatedAt": "2026-03-19T13:09:04Z"
+    },
+    "graphql/graphql-spec#1196": {
+      "events": [
+        {
+          "actor": "egoodwinx",
+          "date": "2025-10-08T02:20:09Z",
+          "type": "edited"
+        },
+        {
+          "actor": "martinbonnin",
+          "date": "2026-01-26T09:50:45Z",
+          "label": "RFC 0",
+          "type": "labeled"
+        },
+        {
+          "actor": "martinbonnin",
+          "date": "2026-01-26T09:52:06Z",
+          "label": "RFC 0",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "martinbonnin",
+          "date": "2026-01-26T10:13:52Z",
+          "type": "edited"
+        },
+        {
+          "actor": "martinbonnin",
+          "date": "2026-01-26T10:15:10Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-07-30T12:34:58Z",
+          "label": "RFC X",
+          "type": "labeled"
+        }
+      ],
+      "updatedAt": "2026-07-30T12:34:58Z"
     },
     "graphql/graphql-spec#1200": {
       "events": [
@@ -1675,9 +1826,45 @@
           "date": "2026-01-15T19:39:48Z",
           "label": "RFC 1",
           "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-04-02T17:51:45Z",
+          "label": "RFC 2",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-04-02T17:51:45Z",
+          "label": "RFC 1",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-07T18:28:42Z",
+          "label": "Next stage",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-06-04T17:52:40Z",
+          "label": "RFC 3",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-06-04T17:52:40Z",
+          "label": "Next stage",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-06-04T17:52:40Z",
+          "label": "RFC 2",
+          "type": "unlabeled"
         }
       ],
-      "updatedAt": "2026-03-19T09:53:54Z"
+      "updatedAt": "2026-06-04T17:54:23Z"
     },
     "graphql/graphql-spec#1208": {
       "events": [
@@ -1692,9 +1879,27 @@
           "date": "2026-02-19T16:01:03Z",
           "label": "RFC 0",
           "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-04-02T18:38:16Z",
+          "label": "RFC 1",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-04-02T18:38:16Z",
+          "label": "Next stage",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-04-02T18:38:16Z",
+          "label": "RFC 0",
+          "type": "unlabeled"
         }
       ],
-      "updatedAt": "2026-02-19T18:10:20Z"
+      "updatedAt": "2026-06-23T15:38:43Z"
     },
     "graphql/graphql-spec#1211": {
       "events": [
@@ -1820,9 +2025,369 @@
           "date": "2026-03-05T19:16:33Z",
           "label": "RFC 0",
           "type": "unlabeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T17:45:07Z",
+          "label": "RFC 2",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T17:45:07Z",
+          "label": "RFC 1",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-07-09T14:06:54Z",
+          "label": "Next stage",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-09-03T17:53:03Z",
+          "label": "RFC 3",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-09-03T17:53:03Z",
+          "label": "RFC 2",
+          "type": "unlabeled"
         }
       ],
-      "updatedAt": "2026-03-06T23:34:16Z"
+      "updatedAt": "2026-09-17T17:39:08Z"
+    },
+    "graphql/graphql-spec#1224": {
+      "events": [
+        {
+          "actor": "benjie",
+          "date": "2026-04-15T16:06:07Z",
+          "label": "RFC 2",
+          "type": "labeled"
+        }
+      ],
+      "updatedAt": "2026-11-13T11:28:12Z"
+    },
+    "graphql/graphql-spec#1225": {
+      "events": [
+        {
+          "actor": "robrichard",
+          "date": "2026-04-17T18:59:08Z",
+          "type": "edited"
+        },
+        {
+          "actor": "robrichard",
+          "date": "2026-04-17T19:10:57Z",
+          "type": "edited"
+        },
+        {
+          "actor": "robrichard",
+          "date": "2026-04-17T19:14:01Z",
+          "type": "edited"
+        },
+        {
+          "actor": "robrichard",
+          "date": "2026-05-07T16:38:36Z",
+          "type": "edited"
+        },
+        {
+          "actor": "robrichard",
+          "date": "2026-05-07T16:38:45Z",
+          "type": "edited"
+        },
+        {
+          "actor": "robrichard",
+          "date": "2026-05-07T16:41:55Z",
+          "type": "edited"
+        },
+        {
+          "actor": "robrichard",
+          "date": "2026-05-07T16:59:25Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-25T12:11:44Z",
+          "label": "RFC 0",
+          "type": "labeled"
+        }
+      ],
+      "updatedAt": "2026-06-22T16:06:07Z"
+    },
+    "graphql/graphql-spec#1227": {
+      "events": [
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T22:20:10Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T22:21:15Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T22:21:29Z",
+          "label": "Next stage",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T22:21:29Z",
+          "label": "RFC 0",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T22:29:39Z",
+          "type": "edited"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:09:18Z",
+          "label": "RFC 1",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:09:18Z",
+          "label": "Next stage",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:09:18Z",
+          "label": "RFC 0",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:13:39Z",
+          "label": "RFC 2",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:13:39Z",
+          "label": "RFC 1",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-09-03T14:03:17Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-09-03T17:56:50Z",
+          "label": "RFC 3",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-09-03T17:56:50Z",
+          "label": "RFC 2",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-09-10T15:02:05Z",
+          "label": "Next stage",
+          "type": "labeled"
+        }
+      ],
+      "updatedAt": "2026-09-17T17:43:40Z"
+    },
+    "graphql/graphql-spec#1228": {
+      "events": [
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T22:50:53Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T22:51:06Z",
+          "label": "Next stage",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T22:51:06Z",
+          "label": "RFC 0",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T22:51:53Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T23:40:30Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T23:40:45Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-07-02T18:23:58Z",
+          "type": "edited"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:30:19Z",
+          "label": "RFC 1",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:30:19Z",
+          "label": "Next stage",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:30:19Z",
+          "label": "RFC 0",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-07-02T19:24:53Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-10-15T17:40:17Z",
+          "label": "Next stage",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-11-05T20:57:08Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-11-05T21:39:45Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-11-05T21:56:51Z",
+          "type": "edited"
+        }
+      ],
+      "updatedAt": "2026-11-06T16:17:08Z"
+    },
+    "graphql/graphql-spec#1229": {
+      "events": [
+        {
+          "actor": "benjie",
+          "date": "2026-05-23T23:35:24Z",
+          "label": "RFC 0",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-05-25T12:09:59Z",
+          "label": "Next stage",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:47:08Z",
+          "label": "RFC 1",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:47:08Z",
+          "label": "Next stage",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:47:08Z",
+          "label": "RFC 0",
+          "type": "unlabeled"
+        }
+      ],
+      "updatedAt": "2026-11-05T20:56:49Z"
+    },
+    "graphql/graphql-spec#1230": {
+      "events": [
+        {
+          "actor": "benjie",
+          "date": "2026-06-10T08:48:48Z",
+          "label": "Next stage",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-06-10T08:48:48Z",
+          "label": "RFC 0",
+          "type": "labeled"
+        }
+      ],
+      "updatedAt": "2026-07-02T18:53:54Z"
+    },
+    "graphql/graphql-spec#1231": {
+      "events": [
+        {
+          "actor": "benjie",
+          "date": "2026-06-10T10:43:37Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-06-10T10:43:47Z",
+          "label": "RFC 0",
+          "type": "labeled"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-06-10T10:45:12Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-06-10T10:45:46Z",
+          "type": "edited"
+        },
+        {
+          "actor": "benjie",
+          "date": "2026-06-18T11:19:59Z",
+          "label": "Next stage",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:46:36Z",
+          "label": "RFC 1",
+          "type": "labeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:46:36Z",
+          "label": "Next stage",
+          "type": "unlabeled"
+        },
+        {
+          "actor": "leebyron",
+          "date": "2026-07-02T18:46:36Z",
+          "label": "RFC 0",
+          "type": "unlabeled"
+        }
+      ],
+      "updatedAt": "2026-09-10T14:33:49Z"
     },
     "graphql/graphql-spec#232": {
       "events": [
@@ -2231,7 +2796,7 @@
           "type": "labeled"
         }
       ],
-      "updatedAt": "2021-10-26T23:50:24Z"
+      "updatedAt": "2026-06-12T04:40:11Z"
     },
     "graphql/graphql-spec#510": {
       "events": [
@@ -2739,7 +3304,7 @@
           "type": "labeled"
         }
       ],
-      "updatedAt": "2021-10-26T23:50:24Z"
+      "updatedAt": "2026-09-17T17:43:38Z"
     },
     "graphql/graphql-spec#701": {
       "events": [
@@ -3070,7 +3635,7 @@
           "type": "unlabeled"
         }
       ],
-      "updatedAt": "2025-07-01T20:55:01Z"
+      "updatedAt": "2026-07-07T12:26:48Z"
     },
     "graphql/graphql-spec#794": {
       "events": [
@@ -3640,7 +4205,7 @@
           "type": "edited"
         }
       ],
-      "updatedAt": "2022-01-14T10:59:40Z"
+      "updatedAt": "2026-05-14T22:08:36Z"
     },
     "graphql/graphql-spec#883": {
       "events": [
@@ -4226,7 +4791,7 @@
           "type": "labeled"
         }
       ],
-      "updatedAt": "2026-02-24T09:18:23Z"
+      "updatedAt": "2026-07-29T07:36:52Z"
     },
     "graphql/graphql-spec#998": {
       "events": [
