@@ -373,7 +373,7 @@ h2 {
   .meeting-activity-video { grid-template-columns: 1fr; }
 }
 
-.filter-links, .meeting-navigation {
+.filter-links {
   display: flex;
   flex-wrap: wrap;
   gap: .6rem 1rem;
@@ -391,16 +391,49 @@ h2 {
   text-decoration: underline solid var(--accent) .24em;
   text-underline-offset: .35em;
 }
-.meeting-navigation a, .meeting-navigation span {
-  padding: .6rem .95rem;
+.meeting-navigation {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 18rem)) minmax(2rem, 1fr) repeat(2, minmax(0, 18rem));
+  gap: .85rem;
+  margin: 1rem 0 1.5rem;
+}
+.meeting-navigation a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .2rem;
+  min-width: 0;
+  padding: .85rem .65rem;
+  text-align: center;
   border: 1px solid var(--line);
-  border-radius: .45rem;
+  border-radius: .4rem;
   background: var(--card);
-  font-weight: 600;
+  font-size: .9rem;
+  line-height: 1.4;
   text-decoration: none;
 }
-.meeting-navigation a:hover, .meeting-navigation a:focus-visible { border-color: var(--accent); }
-.meeting-navigation span { color: var(--muted); background: transparent; }
+.meeting-navigation a:hover, .meeting-navigation a:focus-visible {
+  background: white;
+  border-color: var(--accent);
+}
+.meeting-navigation .previous-series { grid-column: 1; }
+.meeting-navigation .previous { grid-column: 2; }
+.meeting-navigation .next { grid-column: 4; }
+.meeting-navigation .next-series { grid-column: 5; }
+.meeting-nav-direction { font-weight: 400; }
+.meeting-nav-name { font-size: 1rem; font-weight: 500; }
+.meeting-navigation time { color: var(--muted); }
+@media (max-width: 1000px) {
+  .meeting-nav-name { min-height: 2.8em; display: flex; align-items: center; justify-content: center; }
+}
+@media (max-width: 700px) {
+  .meeting-navigation { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
+  .meeting-navigation .previous-series { grid-column: 1; grid-row: 1; }
+  .meeting-navigation .previous { grid-column: 1; grid-row: 2; }
+  .meeting-navigation .next { grid-column: 2; grid-row: 2; }
+  .meeting-navigation .next-series { grid-column: 2; grid-row: 1; }
+}
 
 .meeting-activity-video .meeting-activity-heading { justify-content: flex-start; }
 .mobile-rfcs { display: none; }

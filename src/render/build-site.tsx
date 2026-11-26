@@ -512,6 +512,13 @@ function orderedMeetingGroups(meetings: Meeting[], today: string) {
   return [...pinned, ...remaining.map((entry) => entry.group)];
 }
 
+const meetingNavDate = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
 async function writeMeetings(meetings: Meeting[], today: string) {
   const write = (pathname: string, title: string, body: React.ReactNode) => {
     const meta = { pathname, title, description: title };
@@ -578,27 +585,24 @@ async function writeMeetings(meetings: Meeting[], today: string) {
     await archive(groupHref, groupName(group) + " meetings", series);
     for (const meeting of series) {
       const neighbors = [
-        ["Previous in series", series, -1],
-        ["Previous", meetings, -1],
-        ["Next", meetings, 1],
-        ["Next in series", series, 1],
+        { label: "« Previous in series", entries: series, offset: -1, position: "previous-series" },
+        { label: "‹ Previous", entries: meetings, offset: -1, position: "previous" },
+        { label: "Next ›", entries: meetings, offset: 1, position: "next" },
+        { label: "Next in series »", entries: series, offset: 1, position: "next-series" },
       ] as const;
       const navigation = (
         <nav className="meeting-navigation" aria-label="Meeting navigation">
-          {neighbors.map(([label, entries, offset]) => {
+          {neighbors.map(({ label, entries, offset, position }) => {
             const target = entries[entries.indexOf(meeting) + offset];
-            return target ? (
-              <a
-                key={label}
-                href={meetingHref(target)}
-                title={groupName(target.group) + " · " + target.date}
-              >
-                {label}
+            if (!target) return null;
+            const name = groupName(target.group);
+            const date = meetingNavDate.format(new Date(target.date));
+            return (
+              <a className={position} href={meetingHref(target)} key={position}>
+                <span className="meeting-nav-direction">{label}</span>
+                <span className="meeting-nav-name">{name}</span>
+                <time dateTime={target.date}>{date}</time>
               </a>
-            ) : (
-              <span key={label} aria-disabled="true">
-                {label}
-              </span>
             );
           })}
         </nav>
