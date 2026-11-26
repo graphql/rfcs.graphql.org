@@ -314,43 +314,128 @@ function MobileRfcList({ rfcs }: { rfcs: SiteData["rfcs"] }) {
 }
 
 function HomePage({ data }: { data: SiteData }) {
+  const highlights = [...data.activity]
+    .sort((a, b) => Date.parse(b.event.date) - Date.parse(a.event.date))
+    .filter(
+      (entry, index, entries) =>
+        entries.findIndex((other) => other.identifier === entry.identifier) ===
+        index,
+    )
+    .slice(0, 3);
+  const recording = [...(data.meetings ?? [])]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((meeting) => ({ meeting, details: meetingDetails(meeting) }))
+    .find(({ details }) => details.videoId);
   return (
     <Layout
       title="GraphQL RFC Tracker"
       description="Follow GraphQL RFCs and working group meetings."
       pathname="/"
     >
-      <section className="hero home-overview">
-        <p className="eyebrow">rfcs.graphql.org</p>
-        <h1>GraphQL RFC Tracker</h1>
-        <p className="lede">
-          Follow GraphQL RFCs from proposal through working-group discussion and
-          review.
-        </p>
-        <div className="hero-meta">
-          <div>
-            <span className="meta-label">RFCs tracked</span>
-            <strong>{data.totalCount}</strong>
-          </div>
-          <div>
-            <span className="meta-label">Last generated</span>
-            <strong>{formatDate(data.generatedAt)}</strong>
-          </div>
-        </div>
-      </section>
-      <nav className="home-destinations" aria-label="Explore the tracker">
-        {[
-          { href: "/activity/", title: "Latest activity" },
-          { href: "/meetings/", title: "Meetings" },
-          { href: "/rfcs/open/", title: "Open RFCs" },
-          { href: "/rfcs/", title: "All RFCs" },
-        ].map(({ href, title }) => (
-          <a href={href} key={href}>
-            <span>{title}</span>
-            <span aria-hidden="true">→</span>
+      <section className="home-feature section-block">
+        <div className="home-feature-copy">
+          <h1>What’s happening in GraphQL?</h1>
+          <a className="home-activity-link" href="/activity/">
+            Explore latest activity <span aria-hidden="true">→</span>
           </a>
-        ))}
-      </nav>
+          {highlights.length > 0 && (
+            <ul className="home-highlights" aria-label="Recent RFC activity">
+              {highlights.map((entry) => (
+                <li key={entry.identifier}>
+                  <span className="home-highlight-meta">
+                    {projectName(entry.identifier)} ·{" "}
+                    <time dateTime={formatDate(entry.event.date)}>
+                      {formatDate(entry.event.date)}
+                    </time>
+                  </span>
+                  <a
+                    href={`/activity/#${formatDate(entry.event.date).slice(0, 7).replace("-", "")}`}
+                  >
+                    {entry.title}
+                  </a>
+                  <p>
+                    <DateText text={summarizeEvent(entry.event)} />
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {recording && (
+          <a
+            className="home-recording"
+            href={`/activity/#meeting-${recording.meeting.group}-${recording.meeting.date}`}
+          >
+            <div className="home-recording-image">
+              <img
+                src={`https://i.ytimg.com/vi/${recording.details.videoId}/hq1.jpg`}
+                alt={`${groupName(recording.meeting.group)} meeting recording`}
+                width="480"
+                height="360"
+              />
+            </div>
+            <span className="home-recording-caption">Latest WG recording</span>
+            <strong>{groupName(recording.meeting.group)}</strong>
+            <time dateTime={recording.meeting.date}>
+              {recording.meeting.date}
+            </time>
+            {recording.meeting.agendaSummary?.[0] && (
+              <p>{recording.meeting.agendaSummary[0].text}</p>
+            )}
+            <span className="home-recording-action">View in activity →</span>
+          </a>
+        )}
+      </section>
+      <div className="home-destinations">
+        <section className="section-block">
+          <h2>
+            <a href="/meetings/">
+              Meetings <span aria-hidden="true">→</span>
+            </a>
+          </h2>
+          <nav aria-label="Working group meetings">
+            <ul className="home-wg-links">
+              {orderedMeetingGroups(
+                data.meetings ?? [],
+                formatDate(data.generatedAt),
+              )
+                .filter((group) =>
+                  data.meetings?.some((meeting) => meeting.group === group),
+                )
+                .map((group) => (
+                  <li key={group}>
+                    <a href={`/meetings/${group}/`}>{groupName(group)}</a>
+                  </li>
+                ))}
+            </ul>
+          </nav>
+        </section>
+        <section className="section-block">
+          <h2>RFCs</h2>
+          <nav className="home-rfc-links" aria-label="Browse RFCs">
+            <a href="/rfcs/open/">
+              Open RFCs <span aria-hidden="true">→</span>
+            </a>
+            <a href="/rfcs/">
+              All RFCs <span aria-hidden="true">→</span>
+            </a>
+          </nav>
+          <dl className="home-rfc-stats">
+            <div>
+              <dt>RFCs tracked</dt>
+              <dd>{data.totalCount}</dd>
+            </div>
+            <div>
+              <dt>Last updated</dt>
+              <dd>
+                <time dateTime={formatDate(data.generatedAt)}>
+                  {formatDate(data.generatedAt)}
+                </time>
+              </dd>
+            </div>
+          </dl>
+        </section>
+      </div>
     </Layout>
   );
 }
@@ -483,6 +568,7 @@ function MeetingActivityCard({
   }
   return (
     <Tag
+      id={Tag === "li" ? `meeting-${meeting.group}-${meeting.date}` : undefined}
       className={
         details.videoId
           ? "meeting-activity meeting-activity-video"

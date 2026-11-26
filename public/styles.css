@@ -557,24 +557,31 @@ time { white-space: nowrap; }
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
-.home-destinations a {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.home-destinations h2 { font-size: 1.5rem; font-weight: 400; }
+.home-destinations h2 a { display: flex; justify-content: space-between; text-decoration: none; }
+.home-destinations a:hover, .home-destinations a:focus-visible { text-decoration: underline; }
+.home-destinations a span { color: var(--accent); }
+.home-wg-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .7rem 1.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.home-wg-links a { color: var(--muted); }
+.home-rfc-links { display: flex; flex-wrap: wrap; gap: 1rem 2rem; }
+.home-rfc-links a { font-size: 1.1rem; font-weight: 500; }
+.home-rfc-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
-  padding: 1.5rem;
-  border: 1px solid var(--line);
-  border-radius: .4rem;
-  background: var(--card);
-  font-size: 1.5rem;
-  font-weight: 500;
-  text-decoration: none;
+  margin: 1.5rem 0 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
 }
-.home-destinations a:hover, .home-destinations a:focus-visible {
-  border-color: var(--accent);
-  background: white;
-}
-.home-destinations a > :last-child { color: var(--accent); }
+.home-rfc-stats dt { color: var(--muted); font-size: .9rem; }
+.home-rfc-stats dd { margin: .35rem 0 0; font-weight: 500; }
 .activity-month-divider { scroll-margin-top: 1.5rem; }
 .month-shortcut { font-size: .9rem; color: var(--muted); font-weight: 400; }
 .rfc-table .badge { display: block; width: fit-content; margin: .3rem 0 0; }
@@ -583,4 +590,65 @@ time { white-space: nowrap; }
   .activity-month-divider { gap: .65rem; flex-wrap: wrap; }
 }
 
-.home-overview .hero-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+
+.home-feature {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 3rem;
+  margin-bottom: 1rem;
+  padding: 2.5rem;
+}
+.home-feature h1 { max-width: 17ch; }
+.home-activity-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  padding: .85rem 1.1rem;
+  border: 1px solid var(--accent);
+  border-radius: .35rem;
+  color: white;
+  background: var(--accent);
+  font-weight: 500;
+  text-decoration: none;
+}
+.home-activity-link:hover, .home-activity-link:focus-visible {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.home-highlights { padding: 0; margin: 2rem 0 0; list-style: none; }
+.home-highlights li { border-top: 1px solid var(--line); padding: 1rem 0 0; margin-top: 1rem; }
+.home-highlight-meta { display: block; color: var(--muted); font-size: .85rem; margin-bottom: .35rem; }
+.home-highlights a { font-weight: 500; }
+.home-highlights p { color: var(--muted); margin: .35rem 0 0; font-size: .9rem; }
+.home-recording {
+  display: block;
+  align-self: center;
+  min-width: 0;
+  padding: 1rem;
+  background: #e8efec;
+  border-radius: .5rem;
+  text-decoration: none;
+}
+.home-recording:hover strong, .home-recording:focus-visible strong { text-decoration: underline; text-decoration-color: var(--accent); }
+.home-recording-image { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: .25rem; background: var(--ink); }
+.home-recording img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.home-recording-action { display: block; margin-top: 1rem; font-weight: 500; text-decoration: underline; text-decoration-color: var(--accent-line); }
+.home-recording-caption { display: block; margin-top: 1rem; font-size: .85rem; color: var(--muted); }
+.home-recording strong { display: block; font-size: 1.2rem; font-weight: 500; margin: .25rem 0; }
+.home-recording time { color: var(--muted); font-size: .9rem; }
+.home-recording p { margin: .75rem 0 0; }
+@media (max-width: 900px) {
+  .home-feature { padding: 1.5rem; gap: 1.5rem; }
+}
+@media (max-width: 640px) {
+  .home-feature { grid-template-columns: 1fr; }
+  .home-feature h1 { max-width: none; }
+  .home-recording { margin-top: .25rem; }
+  .home-highlights { margin-top: 1.5rem; }
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+  .home-destinations { grid-template-columns: 1fr; }
+}
