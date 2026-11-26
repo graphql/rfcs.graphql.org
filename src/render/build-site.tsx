@@ -8,6 +8,8 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 import {
   formatDate,
   formatIdentifier,
@@ -368,7 +370,13 @@ function HomePage({ data }: { data: SiteData }) {
   );
 }
 
-function MeetingActivityCard({ meeting }: { meeting: Meeting }) {
+function MeetingActivityCard({
+  meeting,
+  as: Tag = "li",
+}: {
+  meeting: Meeting;
+  as?: "li" | "div";
+}) {
   const details = meetingDetails(meeting);
   const href = meetingHref(meeting);
   const note = meeting.notes[0];
@@ -387,7 +395,7 @@ function MeetingActivityCard({ meeting }: { meeting: Meeting }) {
       );
   }
   return (
-    <li
+    <Tag
       className={
         details.videoId
           ? "meeting-activity meeting-activity-video"
@@ -443,7 +451,7 @@ function MeetingActivityCard({ meeting }: { meeting: Meeting }) {
           referrerPolicy="strict-origin-when-cross-origin"
         />
       )}
-    </li>
+    </Tag>
   );
 }
 
@@ -673,41 +681,6 @@ function MeetingDocument({
         source={source}
         agenda={title === "Agenda"}
       />
-    </section>
-  );
-}
-
-function RfcMeetings({
-  meetings,
-  identifier,
-}: {
-  meetings: Meeting[];
-  identifier: string;
-}) {
-  const entries = meetings
-    .flatMap((meeting) => {
-      const reference = meeting.references.find(
-        (ref) => ref.identifier === identifier,
-      );
-      return reference ? [{ meeting, section: reference.section }] : [];
-    })
-    .reverse();
-  if (!entries.length) return null;
-  return (
-    <section className="detail-timeline">
-      <h2>Working group meetings</h2>
-      <ul className="detail-timeline-list">
-        {entries.map(({ meeting, section }) => (
-          <li key={meetingHref(meeting)}>
-            <a href={meetingHref(meeting) + (section ? `#${section}` : "")}>
-              {groupName(meeting.group)} · {meeting.date}
-            </a>
-            {" · "}
-            {section ? "Discussed" : "On the agenda"}
-            {meeting.cancelled && " · Cancelled"}
-          </li>
-        ))}
-      </ul>
     </section>
   );
 }
@@ -991,7 +964,7 @@ function RfcOverview({ rfc }: { rfc: RfcFrontmatter }) {
     ["WG discussion", rfc.wgDiscussionUrl],
   ] as const;
   return (
-    <section className="rfc-overview">
+    <section className="section-block rfc-overview">
       <h2>At a glance</h2>
       <div className="rfc-overview-columns">
         <dl>
@@ -1060,16 +1033,20 @@ function RfcPage(props: {
   const { frontmatter, body, meetings } = props;
   const openedOn = getOpenedOn(frontmatter.events);
   const secondaryDate = getSecondaryDate(frontmatter);
-  // The downloadable Markdown contains its own overview. Render the structured
-  // frontmatter in its place on the site.
-  const contentBody = stripGeneratedTimeline(stripLeadingTitle(body)).replace(
-    /^\s*## At a glance\r?\n[\s\S]*?(?=\n## |$)/,
-    "",
-  );
+  const descriptions = rfcDescriptions(body);
   const byHref = new Map(
     meetings.map((meeting) => [meetingHref(meeting), meeting]),
   );
-  const timelineMonths = groupEventsByMonth(frontmatter.events);
+  const discussed = new Set(
+    frontmatter.events
+      .filter((event) => event.type === "wgNotes")
+      .map((event) => event.href.split("#")[0]),
+  );
+  const timelineMonths = groupEventsByMonth(
+    frontmatter.events.filter(
+      (event) => event.type !== "wgAgenda" || !discussed.has(event.href),
+    ),
+  );
 
   return (
     <Layout
@@ -1092,35 +1069,42 @@ function RfcPage(props: {
         </div>
       </section>
 
-      <article className="markdown-body rfc-detail">
+      <article className="rfc-detail">
         <RfcOverview rfc={frontmatter} />
-        <Markdown content={contentBody} />
-        <RfcMeetings meetings={meetings} identifier={frontmatter.identifier} />
-        <section className="detail-timeline">
-          <h2>Timeline</h2>
-          <div className="activity-groups detail-timeline-groups">
-            {timelineMonths.map((month) => (
-              <section className="activity-month" key={month.label}>
-                <div className="activity-month-divider">
-                  <span>{month.label}</span>
-                </div>
-                <ul className="detail-timeline-list">
-                  {month.events.map((event, index) => (
-                    <li
-                      key={`${month.label}:${event.type}:${event.date}:${index}`}
-                    >
-                      {renderActivityEvent(
-                        event,
-                        frontmatter.identifier,
-                        byHref,
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        </section>
+        {descriptions.map(({ title, content }, index) => (
+          <section className="markdown-body rfc-description" key={index}>
+            <h2>{title}</h2>
+            <Markdown content={content} />
+          </section>
+        ))}
+        {timelineMonths.length > 0 && (
+          <section className="section-block detail-timeline">
+            <h2>Timeline</h2>
+            <div className="activity-groups detail-timeline-groups">
+              {timelineMonths.map((month) => (
+                <section className="activity-month" key={month.label}>
+                  <div className="activity-month-divider">
+                    <span>{month.label}</span>
+                  </div>
+                  <ul className="detail-timeline-list">
+                    {month.events.map((event, index) => (
+                      <li
+                        key={`${month.label}:${event.type}:${event.date}:${index}`}
+                      >
+                        {renderActivityEvent(
+                          event,
+                          frontmatter.identifier,
+                          byHref,
+                          true,
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          </section>
+        )}
       </article>
     </Layout>
   );
@@ -1295,12 +1279,40 @@ function normalizeHref(href: string | undefined): string | undefined {
   return href;
 }
 
-function stripLeadingTitle(content: string): string {
-  return content.replace(/^# [^\n]+\n+/m, "");
-}
-
-function stripGeneratedTimeline(content: string): string {
-  return content.replace(/\n## Timeline[\s\S]*$/m, "").trimEnd();
+// Split only at the tracker's generated headings; subheadings and fenced
+// examples inside source Markdown belong to their description.
+function rfcDescriptions(body: string) {
+  const sections: { title: string; content: string }[] = [];
+  const headings = unified()
+    .use(remarkParse)
+    .parse(body)
+    .children.filter((node) => node.type === "heading" && node.depth === 2);
+  const names = new Set([
+    "RFC document",
+    "Issue description",
+    "Pull request description",
+    "Spec PR description",
+    "WG discussion",
+  ]);
+  const timeline = headings.findLast(
+    (node) =>
+      body.slice(node.position!.start.offset, node.position!.end.offset) ===
+      "## Timeline",
+  );
+  let end = timeline?.position?.start.offset ?? body.length;
+  for (const node of headings.reverse()) {
+    const start = node.position!.start.offset!;
+    if (start >= end) continue;
+    const title = body
+      .slice(start, node.position!.end.offset)
+      .replace(/^##\s+/, "");
+    if (!names.has(title)) continue;
+    const content = body.slice(node.position!.end.offset, end).trim();
+    if (content.replace(/<!--[\s\S]*?-->/g, "").trim())
+      sections.unshift({ title, content });
+    end = start;
+  }
+  return sections;
 }
 
 function eventSentence(event: Event): string {
@@ -1314,6 +1326,7 @@ function renderActivityEvent(
   event: Event,
   identifier: string,
   meetings: Map<string, Meeting>,
+  showMeetingCard = false,
 ): React.ReactNode {
   if (event.type === "commitsPushed") {
     if (event.commits.length === 1) {
@@ -1408,27 +1421,29 @@ function renderActivityEvent(
         </>
       );
     case "wgAgenda":
-      return (
-        <>
-          Added to{" "}
-          <a href={event.href}>
-            {event.group ? groupName(event.group) : "WG"} agenda
-          </a>{" "}
-          on {formatDate(event.date)}
-        </>
-      );
     case "wgNotes": {
       const meeting = meetings.get(event.href.split("#")[0]);
+      const discussed = event.type === "wgNotes";
+      const hasQuotes =
+        discussed &&
+        meeting?.references.some(
+          (ref) => ref.identifier === identifier && ref.quotes?.length,
+        );
       return (
         <>
-          Discussed in{" "}
+          {discussed ? "Discussed in " : "On the agenda for "}
           <a href={event.href}>
             {formatDate(event.date)}{" "}
             {groupName(meeting?.group ?? event.group ?? "WG")}
           </a>
-          {meeting && (
-            <MeetingNoteQuotes meeting={meeting} identifier={identifier} />
-          )}
+          {meeting &&
+            (hasQuotes ? (
+              <MeetingNoteQuotes meeting={meeting} identifier={identifier} />
+            ) : (
+              showMeetingCard && (
+                <MeetingActivityCard as="div" meeting={meeting} />
+              )
+            ))}
         </>
       );
     }
