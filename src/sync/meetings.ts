@@ -1,4 +1,5 @@
 import { noteQuotes } from "./note-quotes.ts";
+import { normalizeGithubReferences } from "../lib/github.ts";
 import type { Nodes, Root } from "mdast";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -31,14 +32,10 @@ function links(content: string): string[] {
 }
 
 function linkKey(href: string): string {
-  return href
+  return normalizeGithubReferences(href)
     .split(/[?#]/)[0]
     .replace(/\/$/, "")
     .toLowerCase()
-    .replace(
-      "/graphql/composite-schemas-spec/",
-      "/graphql/graphql-federation-spec/",
-    )
     .replace(/\/blob\/(?:main|master|[0-9a-f]{40})\//, "/blob/main/")
     .replace(
       /\/(?:pull|issues|discussions)\/(\d+)\/(?:files|commits).*$/,

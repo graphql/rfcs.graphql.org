@@ -10,6 +10,7 @@ import { projects, projectName } from "../lib/projects.ts";
 import { groupIds, meetingHref } from "../lib/meetings.ts";
 import { attachMeetingVideos } from "./meeting-videos.ts";
 import { collectMeetings } from "./meetings.ts";
+import { normalizeGithubReferences } from "../lib/github.ts";
 import {
   escapeInlineMarkdown,
   eventMarkdown,
@@ -359,13 +360,10 @@ async function main(): Promise<void> {
       record.discussionBody,
       record.documentBody,
     ]) {
-      for (const match of (body ?? "").matchAll(
-        /https:\/\/github\.com\/graphql\/([\w-]+)\/(?:issues|pull|discussions)\/(\d+)/gi,
+      for (const match of normalizeGithubReferences(body ?? "").matchAll(
+        /(?<![\w./-])(?:https:\/\/github\.com\/)?graphql\/([\w-]+)(?:\/(?:issues|pull|discussions)\/|#)(\d+)/gi,
       )) {
-        const repo =
-          match[1] === "composite-schemas-spec"
-            ? "graphql-federation-spec"
-            : match[1];
+        const repo = match[1];
         const project = projects.find((project) => project.repo === repo);
         if (project) record.related.add(project.alias + "-" + match[2]);
       }

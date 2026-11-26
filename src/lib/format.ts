@@ -1,3 +1,4 @@
+import { normalizeGithubReferences } from "./github.ts";
 import type {
   CommitsPushedEvent,
   Event,
@@ -179,6 +180,7 @@ export function summarizeRfc(summary: RfcSummary): string {
 }
 
 export function parseRelated(markdown: string, prefix = ""): string[] {
+  markdown = normalizeGithubReferences(markdown);
   const related = new Set<string>();
   for (const match of markdown.matchAll(
     /(?:builds on|fixes|relates to|replaces|supercedes|supersedes|identical to|addresses) #([0-9]+)/gi,
@@ -186,7 +188,7 @@ export function parseRelated(markdown: string, prefix = ""): string[] {
     related.add(`${prefix}${match[1]}`);
   }
   for (const match of markdown.matchAll(
-    /https:\/\/github\.com\/graphql\/graphql-(spec|wg)\/(?:pull|issues|discussions)\/([0-9]+)/gi,
+    /(?<![\w./-])(?:https:\/\/github\.com\/)?graphql\/graphql-(spec|wg)(?:\/(?:pull|issues|discussions)\/|#)([0-9]+)/gi,
   )) {
     related.add(`${match[1] === "wg" ? "wg" : ""}${match[2]}`);
   }
