@@ -245,10 +245,9 @@ function Layout(props: {
     { href: "/rfcs/open/", label: "Open RFCs" },
     { href: "/rfcs/", label: "All RFCs" },
   ];
-  const selected =
-    props.pathname === "/"
-      ? "/activity/"
-      : navigation.find(({ href }) => props.pathname.startsWith(href))?.href;
+  const selected = navigation.find(({ href }) =>
+    props.pathname.startsWith(href),
+  )?.href;
   return (
     <html lang="en">
       <head>
