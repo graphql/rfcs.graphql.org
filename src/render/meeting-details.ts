@@ -70,14 +70,16 @@ export function meetingDetails(meeting: Meeting) {
     /^#{1,6}\s+(?:agenda|agenda items|topics)\s*:?\s*$/i,
   ).filter((line) => /^(?:\d+[.)]|[-*+])\s+\S/.test(line)).length;
   const recordingUrl = [...notes, agenda].map(recording).find(Boolean);
-  const videoId = youtubeId(recordingUrl) ?? meeting.youtubeVideoId;
+  // Notes sometimes repeat an earlier meeting's recording link.
+  const video =
+    meeting.youtubeVideoId && meeting.youtubeVideoId !== youtubeId(recordingUrl)
+      ? "https://www.youtube.com/watch?v=" + meeting.youtubeVideoId
+      : recordingUrl;
   return {
-    videoId,
+    videoId: youtubeId(video),
     attendees: actual ?? listedAttendees(agenda),
     confirmed: actual !== undefined,
     topics,
-    video:
-      recordingUrl ??
-      (videoId ? "https://www.youtube.com/watch?v=" + videoId : undefined),
+    video,
   };
 }
