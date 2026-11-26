@@ -1,3 +1,5 @@
+import { meetingDetails } from "./meeting-details.ts";
+import { projects, projectName } from "../lib/projects.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
@@ -97,6 +99,40 @@ async function main(): Promise<void> {
       pathname: "/activity/",
     },
   );
+
+  for (const project of [{ alias: "graphql", name: "GraphQL" }, ...projects]) {
+    const rfcs = data.rfcs.filter(
+      (rfc) => projectName(rfc.identifier) === project.name,
+    );
+    const identifiers = new Set(rfcs.map((rfc) => rfc.identifier));
+    const subset = {
+      ...data,
+      rfcs,
+      totalCount: rfcs.length,
+      activity: data.activity.filter((entry) =>
+        identifiers.has(entry.identifier),
+      ),
+      meetings: data.meetings?.filter((meeting) =>
+        meeting.references.some((ref) => identifiers.has(ref.identifier)),
+      ),
+    };
+    for (const section of ["rfcs", "activity"] as const) {
+      const pathname = `/${section}/projects/${project.alias}/`;
+      await writePage(
+        path.join(DIST_DIR, pathname.slice(1), "index.html"),
+        section === "rfcs" ? (
+          <AllRfcsPage data={subset} project={project} />
+        ) : (
+          <ActivityPage data={subset} project={project} />
+        ),
+        {
+          pathname,
+          title: project.name + " " + section,
+          description: "Tracked proposals for " + project.name,
+        },
+      );
+    }
+  }
 
   await writeMeetings(data.meetings ?? [], data.generatedAt.slice(0, 10));
 
@@ -280,6 +316,50 @@ function MeetingLink({ meeting }: { meeting: Meeting }) {
       {" · "}
       {meetingStatus(meeting)}
     </>
+  );
+}
+
+function MeetingActivityCard({ meeting }: { meeting: Meeting }) {
+  const details = meetingDetails(meeting);
+  const href = meetingHref(meeting);
+  const note = meeting.notes[0];
+  const stats: string[] = [];
+  if (!meeting.cancelled) {
+    if (details.attendees !== undefined)
+      stats.push(
+        `${details.attendees} ${details.confirmed ? "attendee" : "listed attendee"}${details.attendees === 1 ? "" : "s"}`,
+      );
+    if (details.topics)
+      stats.push(
+        `${details.topics} agenda ${details.topics === 1 ? "item" : "items"}`,
+      );
+    if (meeting.references.length)
+      stats.push(
+        `${meeting.references.length} linked RFC${meeting.references.length === 1 ? "" : "s"}`,
+      );
+  }
+  return (
+    <li className="meeting-activity">
+      <div className="meeting-activity-heading">
+        <strong>
+          <a href={href}>{groupName(meeting.group)} meeting</a>
+        </strong>
+        <time dateTime={meeting.date}>{meeting.date}</time>
+      </div>
+      {stats.length > 0 && <p>{stats.join(" · ")}</p>}
+      <div className="meeting-activity-links">
+        {meeting.cancelled && <strong>Cancelled</strong>}
+        <a href={meeting.agenda.href}>Agenda</a>
+        {note ? (
+          <a href={note.section ? href + "#" + note.section : note.href}>
+            Notes
+          </a>
+        ) : (
+          !meeting.cancelled && <span>Notes pending</span>
+        )}
+        {details.video && <a href={details.video}>Video recording</a>}
+      </div>
+    </li>
   );
 }
 
@@ -490,16 +570,34 @@ function RfcMeetings({
   );
 }
 
-function ActivityPage({ data }: { data: SiteData }) {
-  const today = (data.generatedAt ?? new Date().toISOString()).slice(0, 10);
+function ProjectLinks({ section }: { section: string }) {
+  return (
+    <nav aria-label="Filter by project">
+      <a href={`/${section}/`}>All projects</a>
+      {[{ alias: "graphql", name: "GraphQL" }, ...projects].map((project) => (
+        <React.Fragment key={project.alias}>
+          {" "}
+          ·{" "}
+          <a href={`/${section}/projects/${project.alias}/`}>{project.name}</a>
+        </React.Fragment>
+      ))}
+    </nav>
+  );
+}
+
+function ActivityPage({
+  data,
+  project,
+}: {
+  data: SiteData;
+  project?: { alias: string; name: string };
+}) {
   const meetings = data.meetings ?? [];
-  const past = meetings.filter((meeting) => meeting.date < today).reverse();
-  const upcoming = meetings.filter((meeting) => meeting.date >= today);
   const activityGroups = groupActivityByMonth(data.activity);
   const monthKeys = [
     ...new Set([
       ...activityGroups.map((month) => month.key),
-      ...past.map((meeting) => meeting.date.slice(0, 7)),
+      ...meetings.map((meeting) => meeting.date.slice(0, 7)),
     ]),
   ]
     .sort()
@@ -509,30 +607,31 @@ function ActivityPage({ data }: { data: SiteData }) {
     <Layout
       title="GraphQL RFC Activity"
       description="Chronological activity across tracked GraphQL RFCs."
-      pathname="/activity/"
+      pathname={project ? `/activity/projects/${project.alias}/` : "/activity/"}
     >
       <section className="hero hero-compact">
         <p className="eyebrow">Cross-repo timeline</p>
-        <h1>Recent activity</h1>
+        <h1>{project ? project.name + " · " : ""}Recent activity</h1>
+        <ProjectLinks section="activity" />
         <p className="lede">
-          A merged activity feed for spec PRs, RFC document history, and working
-          group meetings.
+          Proposal activity across GitHub issues, pull requests, discussions,
+          documents, and working group meetings.
         </p>
       </section>
       <section className="section-block">
         <div className="activity-groups">
-          <MeetingList title="Scheduled meetings" meetings={upcoming} />
           {monthKeys.map((key) => {
             const month = activityGroups.find((group) => group.key === key);
             const cards = [
-              ...past
+              ...meetings
                 .filter((meeting) => meeting.date.startsWith(key))
                 .map((meeting) => ({
                   date: meeting.date,
                   element: (
-                    <li className="activity-card" key={meetingHref(meeting)}>
-                      <MeetingLink meeting={meeting} />
-                    </li>
+                    <MeetingActivityCard
+                      key={meetingHref(meeting)}
+                      meeting={meeting}
+                    />
                   ),
                 })),
               ...(month?.rfcs ?? []).map((rfc) => ({
@@ -575,18 +674,25 @@ function ActivityPage({ data }: { data: SiteData }) {
   );
 }
 
-function AllRfcsPage({ data }: { data: SiteData }) {
+function AllRfcsPage({
+  data,
+  project,
+}: {
+  data: SiteData;
+  project?: { alias: string; name: string };
+}) {
   const allRfcs = [...data.rfcs].sort(compareRfcListEntries);
 
   return (
     <Layout
       title="All GraphQL RFCs"
       description="Complete listing of tracked GraphQL RFCs across all stages."
-      pathname="/rfcs/"
+      pathname={project ? `/rfcs/projects/${project.alias}/` : "/rfcs/"}
     >
       <section className="hero hero-compact">
         <p className="eyebrow">Complete index</p>
-        <h1>All RFCs</h1>
+        <h1>{project ? project.name + " · " : ""}All RFCs</h1>
+        <ProjectLinks section="rfcs" />
         <p className="lede">
           Full tracker view including open, merged, rejected, and superseded
           RFCs.
@@ -603,6 +709,7 @@ function AllRfcsPage({ data }: { data: SiteData }) {
             <thead>
               <tr>
                 <th>RFC</th>
+                <th>Project</th>
                 <th>Stage</th>
                 <th>Champion</th>
                 <th>Title</th>
@@ -620,6 +727,7 @@ function AllRfcsPage({ data }: { data: SiteData }) {
                       <span className="badge">Next stage</span>
                     ) : null}
                   </td>
+                  <td>{rfc.project ?? projectName(rfc.identifier)}</td>
                   <td>{stageLabel(rfc.stage)}</td>
                   <td>
                     {rfc.champion ? (
@@ -680,6 +788,8 @@ function RfcPage(props: {
         <aside className="summary-card">
           <h2>Summary</h2>
           <dl className="meta-grid">
+            <dt>Project</dt>
+            <dd>{frontmatter.project ?? "GraphQL"}</dd>
             <dt>Identifier</dt>
             <dd>{formatIdentifier(frontmatter.identifier)}</dd>
             <dt>Stage</dt>
@@ -698,9 +808,14 @@ function RfcPage(props: {
             <dd>{formatDate(frontmatter.updatedAt)}</dd>
           </dl>
           <ul className="link-list">
+            {frontmatter.issueUrl && (
+              <li>
+                <a href={frontmatter.issueUrl}>Issue</a>
+              </li>
+            )}
             {frontmatter.prUrl ? (
               <li>
-                <a href={frontmatter.prUrl}>Spec PR</a>
+                <a href={frontmatter.prUrl}>Pull request</a>
               </li>
             ) : null}
             {frontmatter.rfcDocUrl ? (
@@ -907,24 +1022,28 @@ function renderActivityEvent(event: Event): React.ReactNode {
   }
 
   switch (event.type) {
+    case "issueCreated":
+    case "issueClosed":
+      return <a href={event.href}>{summarizeEvent(event)}</a>;
     case "prCreated":
       return (
         <>
-          <a href={event.href}>Spec PR</a> created on {formatDate(event.date)}{" "}
-          by {event.actor ?? "unknown"}
+          <a href={event.href}>Pull request</a> created on{" "}
+          {formatDate(event.date)} by {event.actor ?? "unknown"}
         </>
       );
     case "prMerged":
       return (
         <>
-          <a href={event.href}>Spec PR</a> merged on {formatDate(event.date)} by{" "}
-          {event.actor ?? "unknown"}
+          <a href={event.href}>Pull request</a> merged on{" "}
+          {formatDate(event.date)} by {event.actor ?? "unknown"}
         </>
       );
     case "prClosed":
       return (
         <>
-          <a href={event.href}>Spec PR</a> closed on {formatDate(event.date)}
+          <a href={event.href}>Pull request</a> closed on{" "}
+          {formatDate(event.date)}
         </>
       );
     case "topCommentEdited":
@@ -965,15 +1084,21 @@ function renderActivityEvent(event: Event): React.ReactNode {
     case "wgAgenda":
       return (
         <>
-          Added to <a href={event.href}>WG agenda</a> on{" "}
-          {formatDate(event.date)}
+          Added to{" "}
+          <a href={event.href}>
+            {event.group ? groupName(event.group) : "WG"} agenda
+          </a>{" "}
+          on {formatDate(event.date)}
         </>
       );
     case "wgNotes":
       return (
         <>
-          Mentioned in <a href={event.href}>WG notes</a> on{" "}
-          {formatDate(event.date)}
+          Mentioned in{" "}
+          <a href={event.href}>
+            {event.group ? groupName(event.group) : "WG"} notes
+          </a>{" "}
+          on {formatDate(event.date)}
         </>
       );
   }
@@ -1088,7 +1213,11 @@ function getLatestActivityTimestamp(rfc: { events: Event[] }): number {
 }
 
 function compareRfcListEntries(
-  left: { stage: RfcFrontmatter["stage"]; nextStage?: boolean; events: Event[] },
+  left: {
+    stage: RfcFrontmatter["stage"];
+    nextStage?: boolean;
+    events: Event[];
+  },
   right: {
     stage: RfcFrontmatter["stage"];
     nextStage?: boolean;

@@ -367,3 +367,21 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+.meeting-activity {
+  margin-bottom: .9rem;
+  padding: .85rem 1.2rem;
+  border-left: 4px solid #497775;
+  background: #e8efec;
+  border-radius: 0 .5rem .5rem 0;
+}
+.meeting-activity-heading, .meeting-activity-links {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .4rem 1rem;
+}
+.meeting-activity-heading { justify-content: space-between; }
+.meeting-activity time, .meeting-activity-links, .meeting-activity p { font-size: .9rem; }
+.meeting-activity p { margin: .35rem 0; }
+.meeting-activity-links { margin-top: .4rem; }

@@ -5,7 +5,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { execFile as execFileCallback } from "node:child_process";
 import YAML from "yaml";
-import { groupIds } from "../lib/meetings.ts";
+import { projects, projectName } from "../lib/projects.ts";
+import { groupIds, meetingHref } from "../lib/meetings.ts";
 import { collectMeetings } from "./meetings.ts";
 import {
   escapeInlineMarkdown,
@@ -199,6 +200,7 @@ query GetIssueEvents(
 `;
 
 interface RfcRecord {
+  sourceUrls?: Set<string>;
   identifier: string;
   title: string;
   shortname: string;
@@ -207,6 +209,7 @@ interface RfcRecord {
   closedAt?: string;
   mergedAt?: string;
   mergedBy?: string;
+  issueUrl?: string;
   prUrl?: string;
   wgDiscussionUrl?: string;
   rfcDocUrl?: string;
@@ -302,13 +305,10 @@ interface IssueEventsQueryResult {
           hasNextPage: boolean;
           endCursor: string | null;
         };
-        nodes: Array<
-          | {
-              editedAt: string;
-              editor: { login: string | null } | null;
-            }
-          | null
-        >;
+        nodes: Array<{
+          editedAt: string;
+          editor: { login: string | null } | null;
+        } | null>;
       };
     } | null;
   } | null;
@@ -322,7 +322,11 @@ async function main(): Promise<void> {
 
   await fs.mkdir(RFCS_DIR, { recursive: true });
   await fs.mkdir(TEMP_DIR, { recursive: true });
-  await Promise.all(groupIds.map(ensureWgCheckout));
+  await Promise.all(
+    [...new Set([...groupIds, ...Object.keys(documentOrigins)])].map(
+      ensureWgCheckout,
+    ),
+  );
   const state = await loadState();
 
   const records = new Map<string, RfcRecord>();
@@ -344,10 +348,52 @@ async function main(): Promise<void> {
     mergeDiscussion(records, discussion);
   }
   await mergeDocuments(records);
+  await collectProjects(records, token);
+  for (const record of records.values()) {
+    for (const body of [
+      record.prBody,
+      record.discussionBody,
+      record.documentBody,
+    ]) {
+      for (const match of (body ?? "").matchAll(
+        /https:\/\/github\.com\/graphql\/([\w-]+)\/(?:issues|pull|discussions)\/(\d+)/gi,
+      )) {
+        const repo =
+          match[1] === "composite-schemas-spec"
+            ? "graphql-federation-spec"
+            : match[1];
+        const project = projects.find((project) => project.repo === repo);
+        if (project) record.related.add(project.alias + "-" + match[2]);
+      }
+    }
+    for (const related of record.related)
+      if (!records.has(related)) record.related.delete(related);
+  }
   const meetings = await collectMeetings(
     (group) => path.join(TEMP_DIR, group),
     records.values(),
   );
+
+  for (const meeting of meetings) {
+    if (meeting.cancelled) continue;
+    for (const { identifier, agenda, section } of meeting.references) {
+      const record = records.get(identifier);
+      if (!record) continue;
+      const core = {
+        group: meeting.group,
+        date: meeting.date,
+        href: meetingHref(meeting),
+        actor: null,
+      };
+      if (agenda) addEvent(record, { ...core, type: "wgAgenda" });
+      if (section)
+        addEvent(record, {
+          ...core,
+          type: "wgNotes",
+          href: core.href + "#" + section,
+        });
+    }
+  }
 
   const summaries = await writeGeneratedMarkdown(records);
   const activity = summaries
@@ -357,6 +403,7 @@ async function main(): Promise<void> {
         title: summary.title,
         shortname: summary.shortname,
         stage: summary.stage,
+        project: summary.project,
         event,
       })),
     )
@@ -383,14 +430,20 @@ async function main(): Promise<void> {
 
 async function loadState(): Promise<SyncState> {
   try {
-    const state = JSON.parse(await fs.readFile(STATE_PATH, "utf8")) as SyncState;
+    const state = JSON.parse(
+      await fs.readFile(STATE_PATH, "utf8"),
+    ) as SyncState;
     if (!state.issueEvents || typeof state.issueEvents !== "object") {
       return {};
     }
     return {
       issueEvents: Object.fromEntries(
         Object.entries(state.issueEvents).flatMap(([key, value]) => {
-          if (!value || typeof value !== "object" || !Array.isArray(value.events)) {
+          if (
+            !value ||
+            typeof value !== "object" ||
+            !Array.isArray(value.events)
+          ) {
             return [];
           }
           const events = value.events.filter(isCachedIssueEvent);
@@ -525,8 +578,16 @@ function mergeSpecPr(records: Map<string, RfcRecord>, pr: SpecPrNode): void {
     });
   }
 
+  addCommitEvents(record, pr.commits, record.prUrl);
+}
+
+function addCommitEvents(
+  record: RfcRecord,
+  connection: SpecPrNode["commits"],
+  href: string,
+) {
   const commitsByDate = new Map<string, CommitsPushedEvent["commits"]>();
-  for (const node of pr.commits.nodes) {
+  for (const node of connection.nodes) {
     const commit = node?.commit;
     if (!commit) {
       continue;
@@ -545,7 +606,7 @@ function mergeSpecPr(records: Map<string, RfcRecord>, pr: SpecPrNode): void {
     addEvent(record, {
       type: "commitsPushed",
       date,
-      href: commits[commits.length - 1]?.href ?? record.prUrl,
+      href: commits[commits.length - 1]?.href ?? href,
       actor:
         commits[commits.length - 1]?.ghUser ??
         commits[commits.length - 1]?.authorName ??
@@ -597,15 +658,18 @@ async function fetchIssueEvents(
     "edited",
   ]);
 
-  const result = await graphql<IssueEventsQueryResult>(GRAPHQL_ISSUE_EVENTS_QUERY, {
-    headers: {
-      authorization: `token ${token}`,
+  const result = await graphql<IssueEventsQueryResult>(
+    GRAPHQL_ISSUE_EVENTS_QUERY,
+    {
+      headers: {
+        authorization: `token ${token}`,
+      },
+      org,
+      repo,
+      number: issueNumber,
+      timelineSince,
     },
-    org,
-    repo,
-    number: issueNumber,
-    timelineSince,
-  });
+  );
 
   const pullRequest = result.repository?.pullRequest;
   if (!pullRequest) {
@@ -629,7 +693,8 @@ async function fetchIssueEvents(
       continue;
     }
     nextEvents.push({
-      type: timelineItem.__typename === "LabeledEvent" ? "labeled" : "unlabeled",
+      type:
+        timelineItem.__typename === "LabeledEvent" ? "labeled" : "unlabeled",
       date: timelineItem.createdAt,
       actor: timelineItem.actor?.login ?? null,
       label,
@@ -674,14 +739,19 @@ function getTrackedIssueEvents(
     if (issueEvent.type === "edited") {
       const day = formatDate(issueEvent.date);
       const latestEdit = latestEditByDay.get(day);
-      if (!latestEdit || Date.parse(issueEvent.date) > Date.parse(latestEdit.date)) {
+      if (
+        !latestEdit ||
+        Date.parse(issueEvent.date) > Date.parse(latestEdit.date)
+      ) {
         latestEditByDay.set(day, issueEvent);
       }
     }
   }
 
   const statusEvents = [...labelEventsByDay.entries()]
-    .map(([day, dayEvents]) => summarizeTrackedLabelEvents(day, dayEvents, href))
+    .map(([day, dayEvents]) =>
+      summarizeTrackedLabelEvents(day, dayEvents, href),
+    )
     .filter((event): event is StatusChangedEvent => event != null);
   const editEvents = [...latestEditByDay.values()].map(
     (issueEvent) =>
@@ -1040,7 +1110,7 @@ async function mergeDocuments(records: Map<string, RfcRecord>): Promise<void> {
     record.stage = record.stage ?? "0";
     record.rfcDocUrl = `https://github.com/graphql/graphql-wg/blob/main/rfcs/${entry.name}`;
     record.documentBody = pruneMarkdown(content);
-    record.updatedAt = maxDate(record.updatedAt, new Date().toISOString());
+
     for (const related of parseRelated(content, "wg")) {
       record.related.add(related);
     }
@@ -1093,6 +1163,8 @@ async function writeGeneratedMarkdown(
         closedAt: summary.closedAt,
         mergedAt: summary.mergedAt,
         mergedBy: summary.mergedBy,
+        project: summary.project,
+        issueUrl: summary.issueUrl,
         prUrl: summary.prUrl,
         wgDiscussionUrl: summary.wgDiscussionUrl,
         rfcDocUrl: summary.rfcDocUrl,
@@ -1119,8 +1191,11 @@ async function writeGeneratedMarkdown(
         `- Stage: ${stageLabel(summary.stage)}`,
         `- Champion: ${summary.champion ? `[@${summary.champion}](https://github.com/${summary.champion})` : "-"}`,
         `- Latest activity: ${escapeInlineMarkdown(summarizeEvent(summary.events[0]))}`,
+        ...(summary.issueUrl
+          ? [`- Issue: [${summary.issueUrl}](${summary.issueUrl})`]
+          : []),
         ...(summary.prUrl
-          ? [`- Spec PR: [${summary.prUrl}](${summary.prUrl})`]
+          ? [`- Pull request: [${summary.prUrl}](${summary.prUrl})`]
           : []),
         ...(summary.rfcDocUrl
           ? [`- RFC document: [${summary.rfcDocUrl}](${summary.rfcDocUrl})`]
@@ -1159,7 +1234,12 @@ function renderContentSections(record: RfcRecord): string[] {
     sections.push("## RFC document", "", record.documentBody.trim(), "");
   }
   if (record.prBody && record.prBody !== record.documentBody) {
-    sections.push("## Spec PR description", "", record.prBody.trim(), "");
+    sections.push(
+      record.issueUrl ? "## Issue description" : "## Pull request description",
+      "",
+      record.prBody.trim(),
+      "",
+    );
   }
   if (record.discussionBody && record.discussionBody !== record.documentBody) {
     sections.push("## WG discussion", "", record.discussionBody.trim(), "");
@@ -1191,6 +1271,8 @@ function buildSummary(record: RfcRecord): RfcSummary {
     closedAt: record.closedAt,
     mergedAt: record.mergedAt,
     mergedBy: record.mergedBy,
+    project: projectName(record.identifier),
+    issueUrl: record.issueUrl,
     prUrl: record.prUrl,
     wgDiscussionUrl: record.wgDiscussionUrl,
     rfcDocUrl: record.rfcDocUrl,
@@ -1281,6 +1363,370 @@ async function run(command: string, args: string[]): Promise<string> {
     maxBuffer: 50 * 1024 * 1024,
   });
   return stdout;
+}
+
+interface ProjectItem extends DiscussionNode {
+  id: string;
+  lastEditedAt?: string;
+  editor?: { login: string };
+  mergedBy?: { login: string };
+  closingIssuesReferences?: { nodes: { url: string }[] };
+  url: string;
+  closedAt?: string;
+  mergedAt?: string;
+  category?: { name: string };
+  files?: { nodes: { path: string }[] };
+}
+
+const documentOrigins: Record<string, Record<string, number>> = {
+  "graphql-federation-spec": {},
+  "golden-path-wg": {},
+  "composite-schemas-wg": {},
+  "ai-wg": {
+    "semantic-introspection.md": 64,
+    "relay_style_mock_store.pdf": 165,
+  },
+  "graphql-over-http": {
+    "Batching.md": 40,
+    "GraphQLOverSSE.md": 163,
+    "GraphQLOverWebSocket.md": 140,
+    "IncrementalDelivery.md": 124,
+    "PersistedOperations.md": 253,
+  },
+};
+
+async function projectDocuments(
+  repo: string,
+  token: string,
+): Promise<Record<string, number>> {
+  if (!(repo in documentOrigins)) return {};
+  const root = path.join(TEMP_DIR, repo);
+  const result: Record<string, number> = {};
+  for (const entry of await fs.readdir(path.join(root, "rfcs"), {
+    withFileTypes: true,
+  })) {
+    if (
+      !entry.isFile() ||
+      !/\.(md|pdf)$/i.test(entry.name) ||
+      /^(README|TEMPLATE)\./i.test(entry.name)
+    )
+      continue;
+    const reviewed = documentOrigins[repo][entry.name];
+    if (reviewed) {
+      result[entry.name] = reviewed;
+      continue;
+    }
+    const log = await run("git", [
+      "-C",
+      root,
+      "log",
+      "--follow",
+      "--diff-filter=A",
+      "--format=%H",
+      "--",
+      "rfcs/" + entry.name,
+    ]);
+    const oid = log.trim().split("\n").at(-1);
+    const response: {
+      repository: {
+        object: { associatedPullRequests: { nodes: { number: number }[] } };
+      };
+    } = await graphql(
+      `
+        query ($repo: String!, $oid: GitObjectID!) {
+          repository(owner: "graphql", name: $repo) {
+            object(oid: $oid) {
+              ... on Commit {
+                associatedPullRequests(first: 2) {
+                  nodes {
+                    number
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      { repo, oid, headers: { authorization: `token ${token}` } },
+    );
+    const candidates = response.repository.object.associatedPullRequests.nodes;
+    if (candidates.length !== 1) {
+      console.warn(`Review origin of ${repo}/rfcs/${entry.name}`);
+      continue;
+    }
+    result[entry.name] = candidates[0].number;
+  }
+  if (new Set(Object.values(result)).size !== Object.keys(result).length)
+    throw new Error(`Review shared document origin in ${repo}`);
+  return result;
+}
+
+type ProjectItemKind = "issues" | "pullRequests" | "discussions";
+
+async function* projectItems(
+  repo: string,
+  alias: string,
+  kind: ProjectItemKind,
+  token: string,
+): AsyncGenerator<ProjectItem> {
+  const extra =
+    kind === "discussions"
+      ? "category {name}"
+      : kind === "issues"
+        ? "closedAt"
+        : "closedAt mergedAt mergedBy{login} closingIssuesReferences(first:50){nodes{url}}" +
+          (["fed", "gap", "ai", "http"].includes(alias)
+            ? " files(first:100){nodes{path}}"
+            : "");
+  const query = `query($repo:String!, $after:String){
+        repository(owner:"graphql",name:$repo){
+          items:${kind}(first:100,after:$after){
+            pageInfo{hasNextPage endCursor}
+            nodes{id number url title body author{login} lastEditedAt editor{login} createdAt updatedAt labels(first:50){nodes{name}} ${extra}}
+          }
+        }
+      }`;
+  let after: string | null = null;
+  do {
+    const response: {
+      repository: {
+        items: {
+          nodes: ProjectItem[];
+          pageInfo: { hasNextPage: boolean; endCursor: string };
+        };
+      };
+    } = await graphql(query, {
+      repo,
+      after,
+      headers: { authorization: `token ${token}` },
+    });
+    const { nodes, pageInfo } = response.repository.items;
+    yield* nodes;
+    after = pageInfo.hasNextPage ? pageInfo.endCursor : null;
+  } while (after);
+}
+
+async function collectProjects(records: Map<string, RfcRecord>, token: string) {
+  const legacy = new Set(records.keys());
+  const origins = new Map<string, RfcRecord>();
+  for (const { repo, alias } of projects) {
+    const trackedPrs = new Map<string, Set<RfcRecord>>();
+    const documents = await projectDocuments(repo, token);
+    console.log("Collecting proposals from graphql/" + repo);
+    for (const kind of ["issues", "pullRequests", "discussions"] as const) {
+      for await (const item of projectItems(repo, alias, kind, token)) {
+        const labels = item.labels.nodes.map((label) => label?.name ?? "");
+        const paths = item.files?.nodes.map((file) => file.path) ?? [];
+        const gaps = new Set(
+          paths.flatMap((path) => {
+            const match = /^(?:gaps\/)?GAP-(\d+)\//i.exec(path);
+            // PR 2 predates the convention of naming a GAP directory after its PR.
+            return match ? [match[1] === "1001" ? 2 : Number(match[1])] : [];
+          }),
+        );
+        const qualifies =
+          Object.values(documents).includes(item.number) ||
+          /^(?:\[(?:RFC|Proposal)\]|(?:RFC|Proposal)\s*:)|^(?:docs:\s*)?(?:add|adds|introduce)\b.*\b(?:RFC|proposal)\s*$/i.test(
+            item.title,
+          ) ||
+          labels.some((label) => /\b(?:rfc|proposal)\b/i.test(label)) ||
+          item.category?.name === "Ideas" ||
+          (alias === "fed" &&
+            paths.some((path) => /^(spec|rfcs)\//.test(path)) &&
+            !/\b(?:typos?|formatting|markdownlint|fix markdown|broken links)\b/i.test(
+              item.title,
+            )) ||
+          (alias === "jswg" && item.number === 125) ||
+          (alias === "gold" && item.number === 17) ||
+          (alias === "ai" && [32, 33, 54, 79].includes(item.number));
+        const documentNumbers = new Set(
+          paths.flatMap((path) => {
+            const number = path.startsWith("rfcs/")
+              ? documents[path.slice(5)]
+              : undefined;
+            return number === undefined ? [] : [number];
+          }),
+        );
+        const targets =
+          alias === "gap"
+            ? gaps
+            : documentNumbers.size
+              ? documentNumbers
+              : [item.number];
+        const linked =
+          item.closingIssuesReferences?.nodes.flatMap(
+            (issue) => origins.get(issue.url) ?? [],
+          ) ?? [];
+        if (
+          alias === "js" &&
+          kind === "pullRequests" &&
+          labels.includes("spec RFC")
+        ) {
+          for (const match of item.body.matchAll(
+            /https:\/\/github\.com\/graphql\/graphql-spec\/pull\/(\d+)/gi,
+          )) {
+            const core = records.get(match[1]);
+            if (core && !linked.includes(core)) linked.push(core);
+          }
+        }
+        if (
+          !linked.length &&
+          (alias === "gap" ? !gaps.size : !qualifies && !documentNumbers.size)
+        )
+          continue;
+        for (const record of linked.length
+          ? linked
+          : Array.from(targets, (number) =>
+              getOrCreateRecord(
+                records,
+                alias + "-" + number,
+                tidyTitle(item.title),
+              ),
+            )) {
+          if (!linked.includes(record) && legacy.has(record.identifier))
+            throw new Error(
+              `Project route collides with existing RFC ${record.identifier}`,
+            );
+          (record.sourceUrls ??= new Set()).add(item.url);
+          const actor = item.author?.login ?? null;
+          if (record.identifier === alias + "-" + item.number) {
+            const previous =
+              record.prUrl ?? record.wgDiscussionUrl ?? record.issueUrl;
+            if (previous && previous !== item.url)
+              throw new Error(
+                `Conflicting origins for ${record.identifier}: ${previous}, ${item.url}`,
+              );
+            origins.set(item.url, record);
+            record.title = record.shortname = tidyTitle(item.title);
+            record.stage = labelsToStage(labels);
+            record.champion = actor ?? undefined;
+            record.closedAt = item.closedAt ?? undefined;
+            record.mergedAt = item.mergedAt ?? undefined;
+            if (kind === "discussions") {
+              record.wgDiscussionUrl = item.url;
+              record.discussionBody = pruneMarkdown(item.body);
+            } else {
+              if (kind === "issues") record.issueUrl = item.url;
+              else record.prUrl = item.url;
+              record.prBody = pruneMarkdown(item.body);
+            }
+          }
+          if (kind === "pullRequests") {
+            const targets = trackedPrs.get(item.id) ?? new Set();
+            targets.add(record);
+            trackedPrs.set(item.id, targets);
+          }
+          if (item.lastEditedAt)
+            addEvent(record, {
+              type: "topCommentEdited",
+              href: item.url,
+              date: item.lastEditedAt,
+              actor: item.editor?.login ?? null,
+            });
+          record.updatedAt = maxDate(record.updatedAt, item.updatedAt);
+          addEvent(record, {
+            type:
+              kind === "issues"
+                ? "issueCreated"
+                : kind === "discussions"
+                  ? "wgDiscussionCreated"
+                  : "prCreated",
+            href: item.url,
+            date: item.createdAt,
+            actor,
+          });
+          if (item.closedAt)
+            addEvent(record, {
+              type: item.mergedAt
+                ? "prMerged"
+                : kind === "issues"
+                  ? "issueClosed"
+                  : "prClosed",
+              href: item.url,
+              date: item.mergedAt ?? item.closedAt,
+              actor: item.mergedBy?.login ?? null,
+            });
+          for (const related of parseRelated(item.body, alias + "-"))
+            record.related.add(related);
+        }
+      }
+    }
+    const ids = [...trackedPrs.keys()];
+    for (let offset = 0; offset < ids.length; offset += 20) {
+      const response: {
+        nodes: { id: string; url: string; commits: SpecPrNode["commits"] }[];
+      } = await graphql(
+        `
+          query ($ids: [ID!]!) {
+            nodes(ids: $ids) {
+              ... on PullRequest {
+                id
+                url
+                commits(last: 100) {
+                  nodes {
+                    commit {
+                      commitUrl
+                      messageHeadline
+                      authoredDate
+                      author {
+                        name
+                        user {
+                          login
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        `,
+        {
+          ids: ids.slice(offset, offset + 20),
+          headers: { authorization: `token ${token}` },
+        },
+      );
+      for (const pr of response.nodes)
+        for (const record of trackedPrs.get(pr.id)!)
+          addCommitEvents(record, pr.commits, pr.url);
+    }
+    for (const [file, number] of Object.entries(documents)) {
+      const record =
+        records.get(alias + "-" + number) ??
+        [...records.values()].find((record) =>
+          record.sourceUrls?.has(
+            `https://github.com/graphql/${repo}/pull/${number}`,
+          ),
+        );
+      if (!record) throw new Error(`Missing origin for ${repo}/rfcs/${file}`);
+      const directory = path.join(TEMP_DIR, repo);
+      const relative = "rfcs/" + file;
+      record.rfcDocUrl = `https://github.com/graphql/${repo}/blob/main/${relative}`;
+      if (file.endsWith(".md"))
+        record.documentBody = pruneMarkdown(
+          await fs.readFile(path.join(directory, relative), "utf8"),
+        );
+      const log = await run("git", [
+        "-C",
+        directory,
+        "log",
+        "--follow",
+        "--format=%H%x09%aI%x09%an",
+        "--",
+        relative,
+      ]);
+      const commits = log.trim().split("\n").filter(Boolean).reverse();
+      commits.forEach((line, index) => {
+        const [hash, date, actor] = line.split("\t");
+        addEvent(record, {
+          type: index ? "docUpdated" : "docCreated",
+          href: `https://github.com/graphql/${repo}/blob/${hash}/${relative}`,
+          date,
+          actor,
+        });
+      });
+    }
+  }
 }
 
 void main().catch((error) => {

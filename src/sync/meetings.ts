@@ -3,7 +3,7 @@ import path from "node:path";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import { unified } from "unified";
-import { groupIds, type WorkingGroup } from "../lib/meetings.ts";
+import { groupIds, meetingPaths, type WorkingGroup } from "../lib/meetings.ts";
 import type { Meeting, MeetingSource } from "../lib/types.ts";
 import {
   getAgendaDate,
@@ -33,6 +33,10 @@ function linkKey(href: string): string {
     .split(/[?#]/)[0]
     .replace(/\/$/, "")
     .toLowerCase()
+    .replace(
+      "/graphql/composite-schemas-spec/",
+      "/graphql/graphql-federation-spec/",
+    )
     .replace(/\/blob\/(?:main|master|[0-9a-f]{40})\//, "/blob/main/")
     .replace(
       /\/(?:pull|issues|discussions)\/(\d+)\/(?:files|commits).*$/,
@@ -125,6 +129,8 @@ function nodeLinks(node: object, definitions: boolean): string[] {
 
 type RfcSource = {
   identifier: string;
+  sourceUrls?: Set<string>;
+  issueUrl?: string;
   prUrl?: string;
   wgDiscussionUrl?: string;
   rfcDocUrl?: string;
@@ -134,28 +140,34 @@ export async function collectMeetings(
   checkout: (group: WorkingGroup) => string,
   records: Iterable<RfcSource>,
 ): Promise<Meeting[]> {
-  const identifiers = new Map<string, string>();
+  const identifiers = new Map<string, Set<string>>();
   for (const record of records) {
     for (const href of [
+      ...(record.sourceUrls ?? []),
+      record.issueUrl,
       record.prUrl,
       record.wgDiscussionUrl,
       record.rfcDocUrl,
     ]) {
-      if (href) identifiers.set(linkKey(href), record.identifier);
+      if (!href) continue;
+      const key = linkKey(href);
+      const matches = identifiers.get(key) ?? new Set();
+      matches.add(record.identifier);
+      identifiers.set(key, matches);
     }
   }
   const match = (urls: string[]) =>
     urls.flatMap((href) => {
       const identifier = identifiers.get(linkKey(href));
-      return identifier ? [identifier] : [];
+      return identifier ? [...identifier] : [];
     });
 
   const groups = await Promise.all(
     groupIds.map(async (group) => {
-      const prefix = group === "graphql-over-http" ? "working-group/" : "";
+      const paths = meetingPaths(group);
       const [agendas, notes] = await Promise.all([
-        sourceFiles(checkout(group), prefix + "agendas", group),
-        sourceFiles(checkout(group), prefix + "notes", group),
+        sourceFiles(checkout(group), paths.agendas, group),
+        sourceFiles(checkout(group), paths.notes, group),
       ]);
       const meetings: Meeting[] = [];
       const byAgenda = new Map<string, Meeting>();
@@ -179,7 +191,7 @@ export async function collectMeetings(
           cancelled: looksLikeItMightHaveBeenCancelled(agenda.content),
           references: [
             ...new Set(match(nodeLinks(markdown.parse(agenda.content), true))),
-          ].map((identifier) => ({ identifier })),
+          ].map((identifier) => ({ identifier, agenda: true })),
         };
         meetings.push(meeting);
         byAgenda.set(linkKey(agenda.href), meeting);
@@ -247,7 +259,11 @@ export async function collectMeetings(
             if (excludedDepth < 7) continue;
             for (const identifier of match(nodeLinks(node, false))) {
               if (!references.get(identifier)?.section)
-                references.set(identifier, { identifier, section });
+                references.set(identifier, {
+                  ...references.get(identifier),
+                  identifier,
+                  section,
+                });
             }
           }
         });

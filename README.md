@@ -3,23 +3,22 @@
 
 # rfcs.graphql.org
 
-RFC tracker for GraphQL. Gathers together RFCs from:
+The tracker discovers proposals from GitHub issues, pull requests, and discussions.
+It covers the main GraphQL specification and working group, GraphQL over HTTP,
+AI WG, Composite Schemas WG, Federation Spec, GraphiQL, GraphQL.js and its WG,
+Golden Path, and GAPs. Source documents supplement proposal histories. Meetings
+link to proposals independently of discovery.
 
-- graphql-spec issues
-- graphql-spec PRs
-- graphql-wg rfcs/ folder
-
-Tracks commits, commentary, and stages. Interlinks based on heuristics. Also
-fetches details of GraphQL Spec WG meetings to determine when each RFC has been
-discussed, to allow looking up discussions in the recordings.
+Core spec PRs use bare numeric routes such as `/rfcs/42/`. Other projects use
+their repository alias, such as `/rfcs/js-42/` or `/rfcs/jswg-42/`.
+The RFC index and activity feed both offer project filters.
 
 ## Repo setup
 
 This repo does two separate jobs:
 
 1. `yarn sync-rfcs`
-   Fetches RFC-related data from GitHub and from a local checkout of
-   `graphql/graphql-wg`, then writes plain markdown and JSON into `generated/`.
+   Fetches RFC-related data from GitHub and from local project and meeting checkouts, then writes plain markdown and JSON into `generated/`.
 
 2. `yarn build-site`
    Reads only the generated markdown and JSON, renders it through a markdown

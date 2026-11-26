@@ -14,7 +14,10 @@ export interface EventCore {
 }
 
 export interface EventBase extends EventCore {
+  group?: string;
   type:
+    | "issueCreated"
+    | "issueClosed"
     | "prCreated"
     | "prMerged"
     | "prClosed"
@@ -47,6 +50,8 @@ export interface RfcSummary {
   closedAt?: string;
   mergedAt?: string;
   mergedBy?: string;
+  project?: string;
+  issueUrl?: string;
   prUrl?: string;
   wgDiscussionUrl?: string;
   rfcDocUrl?: string;
@@ -59,6 +64,7 @@ export interface RfcSummary {
 }
 
 export interface ActivityEntry {
+  project?: string;
   identifier: string;
   title: string;
   shortname: string;
@@ -83,6 +89,8 @@ export interface RfcFrontmatter {
   closedAt?: string;
   mergedAt?: string;
   mergedBy?: string;
+  project?: string;
+  issueUrl?: string;
   prUrl?: string;
   wgDiscussionUrl?: string;
   rfcDocUrl?: string;
@@ -106,5 +114,5 @@ export interface Meeting {
   cancelled: boolean;
   agenda: MeetingSource;
   notes: MeetingSource[];
-  references: { identifier: string; section?: string }[];
+  references: { identifier: string; agenda?: boolean; section?: string }[];
 }

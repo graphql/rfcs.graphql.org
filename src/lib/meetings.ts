@@ -1,6 +1,7 @@
 import type { Meeting } from "./types.ts";
 
 export const workingGroups = {
+  graphiql: "GraphiQL",
   "ai-wg": "AI WG",
   "community-wg": "Community WG",
   "composite-schemas-wg": "Composite Schemas WG",
@@ -14,6 +15,21 @@ export const workingGroups = {
 } as const;
 
 export type WorkingGroup = keyof typeof workingGroups;
+const meetingDirectories: Partial<
+  Record<WorkingGroup, { agendas: string; notes: string }>
+> = {
+  "graphql-over-http": {
+    agendas: "working-group/agendas",
+    notes: "working-group/notes",
+  },
+  graphiql: {
+    agendas: "working-group/agendas",
+    notes: "working-group/minutes",
+  },
+};
+export const meetingPaths = (group: WorkingGroup) =>
+  meetingDirectories[group] ?? { agendas: "agendas", notes: "notes" };
+
 export const groupIds = Object.keys(workingGroups) as WorkingGroup[];
 export const groupName = (group: string) =>
   workingGroups[group as WorkingGroup] ?? group;
@@ -24,4 +40,4 @@ export const meetingStatus = (meeting: Meeting) =>
     ? "Cancelled"
     : meeting.notes.length
       ? "Notes available"
-      : "Pending";
+      : "Notes pending";
