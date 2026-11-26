@@ -156,7 +156,7 @@ async function main(): Promise<void> {
     }
   }
 
-  await writeMeetings(data.meetings);
+  await writeMeetings(data.meetings, today);
 
   await Promise.all(
     data.rfcs.map(async (summary) => {
@@ -433,7 +433,40 @@ function FilterLinks({
   );
 }
 
-async function writeMeetings(meetings: Meeting[]) {
+function orderedMeetingGroups(meetings: Meeting[], today: string) {
+  const pinned = [
+    "graphql-wg",
+    "graphql-over-http",
+    "composite-schemas-wg",
+    "ai-wg",
+  ] as const;
+  // Clamp month-end dates to the last day of the target calendar month.
+  const date = new Date(today + "T00:00:00Z");
+  const cutoff = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 5, 0),
+  );
+  cutoff.setUTCDate(Math.min(date.getUTCDate(), cutoff.getUTCDate()));
+  const since = cutoff.toISOString().slice(0, 10);
+  const remaining = groupIds
+    .filter((group) => !pinned.some((id) => id === group))
+    .map((group) => {
+      const held = meetings.filter((meeting) => meeting.group === group);
+      return {
+        group,
+        recent: held.some((meeting) => meeting.date >= since),
+        count: held.length,
+      };
+    });
+  remaining.sort(
+    (a, b) =>
+      Number(b.recent) - Number(a.recent) ||
+      b.count - a.count ||
+      groupName(a.group).localeCompare(groupName(b.group)),
+  );
+  return [...pinned, ...remaining.map((entry) => entry.group)];
+}
+
+async function writeMeetings(meetings: Meeting[], today: string) {
   const write = (pathname: string, title: string, body: React.ReactNode) => {
     const meta = { pathname, title, description: title };
     return writePage(
@@ -448,7 +481,7 @@ async function writeMeetings(meetings: Meeting[]) {
   };
   const links = [
     { href: "/meetings/", name: "All groups" },
-    ...groupIds.map((group) => ({
+    ...orderedMeetingGroups(meetings, today).map((group) => ({
       href: `/meetings/${group}/`,
       name: groupName(group),
     })),
@@ -639,17 +672,25 @@ function RfcMeetings({
   );
 }
 
+const specFilters = [
+  { alias: "graphql", name: "GraphQL Spec" },
+  { alias: "http", name: "GraphQL over HTTP Spec" },
+  { alias: "compwg", name: "Federation Spec" },
+];
+
 function ProjectLinks({ section, alias }: { section: string; alias?: string }) {
   const base = "/" + section + "/";
   return (
     <FilterLinks
       label="Filter by project"
       links={[
-        { href: base, name: "All projects" },
-        ...projectFilters.map((project) => ({
-          name: project.name,
-          href: base + "projects/" + project.alias + "/",
-        })),
+        { href: base, name: section === "rfcs" ? "All RFCs" : "All projects" },
+        ...(section === "rfcs" ? specFilters : projectFilters).map(
+          (project) => ({
+            name: project.name,
+            href: base + "projects/" + project.alias + "/",
+          }),
+        ),
       ]}
       current={alias ? base + "projects/" + alias + "/" : base}
     />
@@ -754,7 +795,8 @@ function AllRfcsPage({
 }) {
   const allRfcs = [...data.rfcs].sort(compareRfcListEntries);
 
-  const title = project ? project.name + " RFCs" : "All RFCs";
+  const spec = specFilters.find((filter) => filter.alias === project?.alias);
+  const title = project ? (spec?.name ?? project.name) + " RFCs" : "All RFCs";
   return (
     <Layout
       title={title}
