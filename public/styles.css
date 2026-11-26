@@ -141,8 +141,8 @@ h3 {
 
 h1 {
   margin: 0;
-  font-size: clamp(2.3rem, 5.6vw, 4.2rem);
-  line-height: 1.12;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  line-height: 1.2;
 }
 
 h2 {
@@ -525,3 +525,35 @@ h2 {
 .meeting-document-content h4 { font-size: 1.1rem; }
 .meeting-document-content :is(h5, h6) { font-size: 1rem; }
 .meeting-document-content > :first-child { margin-top: 1rem; }
+
+
+.meeting-archive > h1 { margin-bottom: 1.25rem; }
+.meeting-archive > .filter-links {
+  gap: .8rem 1.25rem;
+  padding-bottom: .25rem;
+}
+.meeting-archive .activity-month { margin-top: 1.75rem; }
+.meeting-archive .meeting-activity {
+  padding: 1.1rem 1.2rem;
+  margin-bottom: 1rem;
+}
+.meeting-archive .meeting-activity-heading {
+  justify-content: space-between;
+  gap: .35rem 1rem;
+}
+.meeting-archive .meeting-activity-heading strong { font-size: 1.1rem; font-weight: 500; }
+.meeting-archive .meeting-activity-heading time { color: var(--muted); white-space: nowrap; }
+.meeting-archive .meeting-activity-links { margin-top: .75rem; }
+.meeting-archive .meeting-activity p { color: var(--muted); margin-top: .5rem; }
+@media (max-width: 900px) {
+  .meeting-archive .meeting-activity-heading { flex-direction: column; gap: .25rem; }
+}
+@media (max-width: 640px) {
+  .meeting-archive > .filter-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: .85rem 1rem;
+  }
+  .meeting-archive .meeting-activity { padding: 1rem; }
+}

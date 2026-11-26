@@ -552,7 +552,7 @@ async function writeMeetings(meetings: Meeting[], today: string) {
     return write(
       pathname,
       title,
-      <section className="section-block">
+      <section className="section-block meeting-archive">
         <h1>{title}</h1>
         <FilterLinks
           label="Filter by working group"
@@ -757,20 +757,13 @@ function ActivityPage({
       description="Chronological activity across tracked GraphQL RFCs."
       pathname={project ? `/activity/projects/${project.alias}/` : "/activity/"}
     >
-      <section className="hero hero-compact">
-        <p className="eyebrow">Cross-repo timeline</p>
+      <section className="section-block">
         <h1>{project ? project.name + " · " : ""}Recent activity</h1>
         <ProjectLinks
           filters={filters}
           section="activity"
           alias={project?.alias}
         />
-        <p className="lede">
-          Proposal activity across GitHub issues, pull requests, discussions,
-          documents, and working group meetings.
-        </p>
-      </section>
-      <section className="section-block">
         <div className="activity-groups">
           {monthKeys.map((key) => {
             const month = activityGroups.find((group) => group.key === key);
