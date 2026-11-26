@@ -239,6 +239,16 @@ function Layout(props: {
     throw new Error(`pathname must start with "/"!`);
   }
   const canonicalUrl = `https://rfcs.graphql.org${props.pathname}`;
+  const navigation = [
+    { href: "/activity/", label: "Activity" },
+    { href: "/meetings/", label: "Meetings" },
+    { href: "/rfcs/open/", label: "Open RFCs" },
+    { href: "/rfcs/", label: "All RFCs" },
+  ];
+  const selected =
+    props.pathname === "/"
+      ? "/activity/"
+      : navigation.find(({ href }) => props.pathname.startsWith(href))?.href;
   return (
     <html lang="en">
       <head>
@@ -257,10 +267,16 @@ function Layout(props: {
               <span className="brand-mark">GraphQL</span>{" "}
               <span className="brand-copy">RFC Tracker</span>
             </a>
-            <nav className="site-nav">
-              <a href="/rfcs/">All RFCs</a>
-              <a href="/activity/">Activity</a>
-              <a href="/meetings/">Meetings</a>
+            <nav className="site-nav" aria-label="Main navigation">
+              {navigation.map(({ href, label }) => (
+                <a
+                  key={href}
+                  href={href}
+                  aria-current={selected === href ? "page" : undefined}
+                >
+                  {label}
+                </a>
+              ))}
             </nav>
           </header>
           <main>{props.children}</main>
