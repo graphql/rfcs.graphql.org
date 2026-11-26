@@ -90,11 +90,15 @@ async function main(): Promise<void> {
   await fs.mkdir(DIST_DIR, { recursive: true });
   await copyPublicDir();
 
-  await writePage(path.join(DIST_DIR, "index.html"), <HomePage data={data} />, {
-    title: "GraphQL RFC Tracker",
-    description: `Tracks ${data.totalCount} GraphQL RFCs across the spec and working group repos.`,
-    pathname: "/",
-  });
+  await writePage(
+    path.join(DIST_DIR, "rfcs", "open", "index.html"),
+    <OpenRfcsPage data={data} />,
+    {
+      title: "Open GraphQL RFCs",
+      description: `Tracks ${data.totalCount} GraphQL RFCs across the spec and working group repos.`,
+      pathname: "/rfcs/open/",
+    },
+  );
 
   const projectPages = projectFilters.map((project) => {
     const rfcs = data.rfcs.filter(
@@ -137,15 +141,20 @@ async function main(): Promise<void> {
     },
   );
 
-  await writePage(
+  for (const targetPath of [
+    path.join(DIST_DIR, "index.html"),
     path.join(DIST_DIR, "activity", "index.html"),
-    <ActivityPage filters={activeProjects} data={data} />,
-    {
-      title: "GraphQL RFC Activity",
-      description: "Chronological activity across tracked GraphQL RFCs.",
-      pathname: "/activity/",
-    },
-  );
+  ]) {
+    await writePage(
+      targetPath,
+      <ActivityPage filters={activeProjects} data={data} />,
+      {
+        title: "GraphQL RFC Activity",
+        description: "Chronological activity across tracked GraphQL RFCs.",
+        pathname: "/activity/",
+      },
+    );
+  }
 
   for (const { project, subset } of projectPages) {
     for (const section of ["rfcs", "activity"] as const) {
@@ -288,16 +297,16 @@ function MobileRfcList({ rfcs }: { rfcs: SiteData["rfcs"] }) {
   );
 }
 
-function HomePage({ data }: { data: SiteData }) {
+function OpenRfcsPage({ data }: { data: SiteData }) {
   const openRfcs = data.rfcs
     .filter((rfc) => !rfc.mergedAt && !rfc.closedAt)
     .sort(compareRfcListEntries);
 
   return (
     <Layout
-      title="GraphQL RFC Tracker"
+      title="Open GraphQL RFCs"
       description={`Tracks ${data.totalCount} GraphQL RFCs across the spec and working group repos.`}
-      pathname="/"
+      pathname="/rfcs/open/"
     >
       <section className="hero">
         <p className="eyebrow">rfcs.graphql.org</p>
@@ -585,10 +594,25 @@ async function writeMeetings(meetings: Meeting[], today: string) {
     await archive(groupHref, groupName(group) + " meetings", series);
     for (const meeting of series) {
       const neighbors = [
-        { label: "« Previous in series", entries: series, offset: -1, position: "previous-series" },
-        { label: "‹ Previous", entries: meetings, offset: -1, position: "previous" },
+        {
+          label: "« Previous in series",
+          entries: series,
+          offset: -1,
+          position: "previous-series",
+        },
+        {
+          label: "‹ Previous",
+          entries: meetings,
+          offset: -1,
+          position: "previous",
+        },
         { label: "Next ›", entries: meetings, offset: 1, position: "next" },
-        { label: "Next in series »", entries: series, offset: 1, position: "next-series" },
+        {
+          label: "Next in series »",
+          entries: series,
+          offset: 1,
+          position: "next-series",
+        },
       ] as const;
       const navigation = (
         <nav className="meeting-navigation" aria-label="Meeting navigation">
@@ -841,7 +865,7 @@ function AllRfcsPage({
       <section className="section-block">
         <div className="section-head">
           <h1>{title}</h1>
-          <a href="/">View open RFCs</a>
+          <a href="/rfcs/open/">View open RFCs</a>
         </div>
         <ProjectLinks filters={filters} section="rfcs" alias={project?.alias} />
         <MobileRfcList rfcs={allRfcs} />
