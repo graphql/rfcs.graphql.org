@@ -31,10 +31,19 @@
 
   document.querySelectorAll(".video-still").forEach((still) => {
     const image = still.querySelector("img");
-    const state = { visible: false, hovered: false, timer: null, frame: 1 };
+    const hoverArea = still.closest(".video-preview") || still;
+    const automatic = still.dataset.rotate === "auto";
+    const state = {
+      visible: false,
+      hovered: hover.matches && hoverArea.matches(":hover"),
+      timer: null,
+      frame: 1,
+      version: 0,
+    };
     previews.set(still, state);
 
-    function showFrame(frame) {
+    function advance(version, repeat) {
+      const frame = state.frame === 1 ? 3 : 1;
       const src =
         "https://i.ytimg.com/vi/" +
         still.dataset.videoId +
@@ -43,35 +52,43 @@
         ".jpg";
       const next = new Image();
       next.onload = () => {
-        if (still.isConnected && state.timer && state.frame === frame)
-          image.src = src;
+        if (!still.isConnected || state.version !== version) return;
+        state.frame = frame;
+        image.src = src;
+        if (repeat) {
+          state.timer = setTimeout(
+            () => advance(version, repeat),
+            automatic ? 3500 : 1500,
+          );
+        }
       };
       next.src = src;
     }
 
     function update() {
-      clearInterval(state.timer);
+      clearTimeout(state.timer);
       state.timer = null;
-      if (motion.matches || document.hidden || !state.visible) return;
-      if (still.dataset.rotate !== "auto" && !state.hovered) return;
-      state.timer = setInterval(
-        () => {
-          state.frame = state.frame === 1 ? 3 : 1;
-          showFrame(state.frame);
-        },
-        still.dataset.rotate === "auto" ? 3500 : 1000,
-      );
+      const version = ++state.version;
+      if (document.hidden || !state.visible) return;
+      if (automatic) {
+        if (!motion.matches) {
+          state.timer = setTimeout(() => advance(version, true), 3500);
+        }
+      } else if (state.hovered) {
+        advance(version, true);
+      }
     }
     state.update = update;
-    const hoverArea = still.closest(".video-preview") || still;
-    hoverArea.addEventListener("pointerenter", () => {
-      state.hovered = hover.matches;
-      update();
-    });
-    hoverArea.addEventListener("pointerleave", () => {
-      state.hovered = false;
-      update();
-    });
+    if (!automatic) {
+      hoverArea.addEventListener("pointerenter", (event) => {
+        state.hovered = event.pointerType !== "touch";
+        update();
+      });
+      hoverArea.addEventListener("pointerleave", () => {
+        state.hovered = false;
+        update();
+      });
+    }
     image.addEventListener("error", () => {
       if (!image.src.endsWith("/hqdefault.jpg")) {
         image.src =
@@ -101,7 +118,8 @@
     const still = button.querySelector(".video-still");
     const state = previews.get(still);
     if (state) {
-      clearInterval(state.timer);
+      clearTimeout(state.timer);
+      state.version++;
       observer.unobserve(still);
       previews.delete(still);
     }
