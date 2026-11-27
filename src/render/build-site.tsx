@@ -492,15 +492,68 @@ async function writeActivityPages(
   }
 }
 
-function HomePage({ data }: { data: SiteData }) {
-  const highlights = [...data.activity]
-    .sort((a, b) => Date.parse(b.event.date) - Date.parse(a.event.date))
+function isHighlight(event: Event): boolean {
+  switch (event.type) {
+    case "statusChanged":
+      return (
+        event.summary.startsWith("Advanced to RFC ") ||
+        event.summary === "Marked as Ready for Next Stage" ||
+        event.summary === "Marked as Active"
+      );
+    case "commitsPushed":
+    case "prMerged":
+    case "prCreated":
+    case "issueCreated":
+    case "docCreated":
+    case "docUpdated":
+    case "wgDiscussionCreated":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function homeHighlights(data: SiteData) {
+  const eligible = new Set(
+    data.rfcs
+      .filter(
+        (rfc) =>
+          rfc.stage !== "X" &&
+          rfc.stage !== "S" &&
+          (!rfc.closedAt || rfc.mergedAt),
+      )
+      .map((rfc) => rfc.identifier),
+  );
+  const cutoff = Date.parse(data.generatedAt) - 60 * 86_400_000;
+  const candidates = data.activity
     .filter(
-      (entry, index, entries) =>
-        entries.findIndex((other) => other.identifier === entry.identifier) ===
-        index,
+      ({ identifier, event }) =>
+        eligible.has(identifier) &&
+        isHighlight(event) &&
+        Date.parse(event.date) >= cutoff,
     )
-    .slice(0, 3);
+    .sort((a, b) => Date.parse(b.event.date) - Date.parse(a.event.date));
+  const projects = new Set<string>();
+  const selected = new Map<string, ActivityEntry>();
+  for (const entry of candidates) {
+    if (selected.size === 3) break;
+    const project = projectName(entry.identifier);
+    if (!projects.has(project)) {
+      projects.add(project);
+      selected.set(entry.identifier, entry);
+    }
+  }
+  for (const entry of candidates) {
+    if (selected.size === 3) break;
+    if (!selected.has(entry.identifier)) selected.set(entry.identifier, entry);
+  }
+  return [...selected.values()].sort(
+    (a, b) => Date.parse(b.event.date) - Date.parse(a.event.date),
+  );
+}
+
+function HomePage({ data }: { data: SiteData }) {
+  const highlights = homeHighlights(data);
   const recording = [...(data.meetings ?? [])]
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((meeting) => ({ meeting, details: meetingDetails(meeting) }))
@@ -527,11 +580,7 @@ function HomePage({ data }: { data: SiteData }) {
                       {formatDate(entry.event.date)}
                     </time>
                   </span>
-                  <a
-                    href={`/activity/#${formatDate(entry.event.date).slice(0, 7).replace("-", "")}`}
-                  >
-                    {entry.title}
-                  </a>
+                  <a href={`/rfcs/${entry.identifier}/`}>{entry.title}</a>
                   <p>
                     <DateText text={summarizeEvent(entry.event)} />
                   </p>
