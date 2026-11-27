@@ -682,3 +682,75 @@ time { white-space: nowrap; }
 @media (min-width: 641px) and (max-width: 900px) {
   .home-destinations { grid-template-columns: 1fr; }
 }
+
+.video-preview-container { min-width: 0; width: 100%; }
+.video-still { display: block; width: 100%; height: 100%; aspect-ratio: 16 / 9; overflow: hidden; }
+.video-still img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.video-preview {
+  display: block;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border: 0;
+  border-radius: .35rem;
+  overflow: hidden;
+  background: var(--ink);
+  cursor: pointer;
+}
+.video-preview:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.video-play {
+  position: absolute;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  padding: .5rem 1rem;
+  border-radius: .4rem;
+  color: white;
+  background: rgba(20, 24, 33, .8);
+  font-size: 1.2rem;
+}
+.video-preview:hover .video-play, .video-preview:focus-visible .video-play { background: var(--accent); }
+.video-player { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: .35rem; }
+.meeting-quotes .video-preview-container { width: min(100%, 300px); }
+.rfc-detail .meeting-quotes .video-preview-container { width: 100%; }
+.feed-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .85rem 1.5rem;
+  margin: 1.5rem 0;
+  padding: .85rem 0;
+  border-block: 1px solid var(--line);
+}
+.feed-period { position: relative; display: flex; align-items: baseline; flex-wrap: wrap; gap: .6rem 1.25rem; }
+.feed-period > span { font-weight: 500; }
+.feed-period > a { color: var(--muted); }
+.feed-period details { position: static; }
+.feed-period summary { cursor: pointer; text-decoration: underline; text-decoration-color: var(--accent-line); }
+.feed-period details ul {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: .6rem 1.5rem;
+  max-height: 18rem;
+  overflow: auto;
+  list-style: none;
+  padding: 1rem;
+  margin: .5rem 0 0;
+  background: white;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+.feed-period [aria-current="page"] { font-weight: 700; text-decoration-color: var(--accent); }
+.feed-pagination { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; min-width: 12rem; }
+.feed-newer { grid-column: 1; }
+.feed-older { grid-column: 2; text-align: right; }
+.meeting-activity { scroll-margin-top: 1.5rem; }
+@media (max-width: 640px) {
+  .feed-navigation { align-items: flex-start; flex-direction: column; }
+  .feed-pagination { width: 100%; }
+  .feed-period details ul { left: 0; right: auto; }
+}

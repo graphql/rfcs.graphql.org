@@ -146,15 +146,8 @@ async function main(): Promise<void> {
     description: "Follow GraphQL RFCs and working group meetings.",
     pathname: "/",
   });
-  await writePage(
-    path.join(DIST_DIR, "activity", "index.html"),
-    <ActivityPage filters={activeProjects} data={data} />,
-    {
-      title: "GraphQL RFC Activity",
-      description: "Chronological activity across tracked GraphQL RFCs.",
-      pathname: "/activity/",
-    },
-  );
+  const activityPeriods = feedPeriods(activityMonths(data));
+  await writeActivityPages(data, activeProjects, activityPeriods);
 
   for (const { project, subset } of projectPages) {
     for (const section of ["rfcs", "activity"] as const) {
@@ -164,28 +157,31 @@ async function main(): Promise<void> {
         project.alias,
         ...project.sources.map((source) => source.alias),
       ]);
-      for (const alias of aliases)
-        await writePage(
-          path.join(DIST_DIR, section, "projects", alias, "index.html"),
-          section === "rfcs" ? (
+      for (const alias of aliases) {
+        if (section === "activity") {
+          await writeActivityPages(
+            subset,
+            activeProjects,
+            activityPeriods,
+            project,
+            alias,
+          );
+        } else {
+          await writePage(
+            path.join(DIST_DIR, section, "projects", alias, "index.html"),
             <AllRfcsPage
               filters={availableSpecs}
               data={subset}
               project={project}
-            />
-          ) : (
-            <ActivityPage
-              filters={activeProjects}
-              data={subset}
-              project={project}
-            />
-          ),
-          {
-            pathname,
-            title: project.name + " " + section,
-            description: "Tracked proposals for " + project.name,
-          },
-        );
+            />,
+            {
+              pathname,
+              title: project.name + " " + section,
+              description: "Tracked proposals for " + project.name,
+            },
+          );
+        }
+      }
     }
   }
 
@@ -258,6 +254,7 @@ function Layout(props: {
         <link rel="canonical" href={canonicalUrl} />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="stylesheet" href="/styles.css" />
+        <script src="/site.js" defer />
       </head>
       <body>
         <div className="page-shell">
@@ -310,6 +307,189 @@ function MobileRfcList({ rfcs }: { rfcs: SiteData["rfcs"] }) {
       )}
     </div>
   );
+}
+
+function VideoStill({
+  videoId,
+  title,
+  rotate = "hover",
+}: {
+  videoId: string;
+  title: string;
+  rotate?: "hover" | "auto";
+}) {
+  return (
+    <span className="video-still" data-video-id={videoId} data-rotate={rotate}>
+      <img
+        src={`https://i.ytimg.com/vi/${videoId}/hq1.jpg`}
+        alt={title}
+        width="480"
+        height="360"
+        loading={rotate === "auto" ? "eager" : "lazy"}
+        decoding="async"
+      />
+    </span>
+  );
+}
+
+function VideoPreview({ videoId, title }: { videoId: string; title: string }) {
+  return (
+    <div className="video-preview-container">
+      <button
+        className="video-preview"
+        type="button"
+        data-load-video={videoId}
+        data-video-title={title}
+        aria-label={`Play ${title}`}
+      >
+        <VideoStill videoId={videoId} title={title} />
+        <span className="video-play" aria-hidden="true">
+          ▶
+        </span>
+      </button>
+      <noscript>
+        <a href={`https://www.youtube.com/watch?v=${videoId}`}>
+          Watch recording on YouTube
+        </a>
+      </noscript>
+    </div>
+  );
+}
+
+function archivePeriod(month: string) {
+  return month.slice(0, 4) + (Number(month.slice(5, 7)) <= 6 ? "H1" : "H2");
+}
+
+function recentMonth(today: string) {
+  const date = new Date(today.slice(0, 7) + "-01T00:00:00Z");
+  date.setUTCMonth(date.getUTCMonth() - 2);
+  return date.toISOString().slice(0, 7);
+}
+
+function feedPeriods(months: string[]) {
+  return [...new Set(months.map(archivePeriod))].sort().reverse();
+}
+
+function activityMonths(data: SiteData) {
+  return [
+    ...new Set([
+      ...data.activity.map(({ event }) => formatDate(event.date).slice(0, 7)),
+      ...(data.meetings ?? []).map((meeting) => meeting.date.slice(0, 7)),
+    ]),
+  ]
+    .sort()
+    .reverse();
+}
+
+function visibleMonths(months: string[], today: string, period?: string) {
+  return months.filter((month) =>
+    period
+      ? archivePeriod(month) === period
+      : month >= recentMonth(today) && month <= today.slice(0, 7),
+  );
+}
+
+function archiveTarget(
+  base: string,
+  period: string | undefined,
+  periods: string[],
+) {
+  const target =
+    period && (periods.find((entry) => entry <= period) ?? periods.at(-1));
+  return base + (target ? target + "/" : "");
+}
+
+function FeedNavigation({
+  base,
+  months,
+  today,
+  period,
+}: {
+  base: string;
+  months: string[];
+  today: string;
+  period?: string;
+}) {
+  const periods = feedPeriods(months);
+  const olderMonth = months.find((month) =>
+    period ? archivePeriod(month) < period : month < recentMonth(today),
+  );
+  const newerPeriod = period && periods[periods.indexOf(period) - 1];
+  const olderHref =
+    olderMonth &&
+    `${base}${archivePeriod(olderMonth)}/#${olderMonth.replace("-", "")}`;
+  return (
+    <nav className="feed-navigation" aria-label="Browse dates">
+      <div className="feed-period">
+        <span>
+          {period
+            ? period.slice(0, 4) + " " + period.slice(4)
+            : "Latest three months"}
+        </span>
+        {period && <a href={base}>Latest three months</a>}
+        {!!periods.length && (
+          <details>
+            <summary>Archive</summary>
+            <ul>
+              {periods.map((entry) => (
+                <li key={entry}>
+                  <a
+                    href={base + entry + "/"}
+                    aria-current={entry === period ? "page" : undefined}
+                  >
+                    {entry.slice(0, 4)} {entry.slice(4)}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+      <div className="feed-pagination">
+        {newerPeriod ? (
+          <a className="feed-newer" href={base + newerPeriod + "/"}>
+            ← Newer
+          </a>
+        ) : period ? (
+          <a className="feed-newer" href={base}>
+            ← Latest
+          </a>
+        ) : null}
+        {olderHref && (
+          <a className="feed-older" href={olderHref}>
+            Older →
+          </a>
+        )}
+      </div>
+    </nav>
+  );
+}
+
+async function writeActivityPages(
+  data: SiteData,
+  filters: ProjectFilter[],
+  periods: string[],
+  project?: ProjectFilter,
+  alias = project?.alias,
+) {
+  const base = alias ? `/activity/projects/${alias}/` : "/activity/";
+  for (const period of [undefined, ...periods]) {
+    const pathname = base + (period ? period + "/" : "");
+    await writePage(
+      path.join(DIST_DIR, pathname.slice(1), "index.html"),
+      <ActivityPage
+        data={data}
+        filters={filters}
+        project={project}
+        period={period}
+      />,
+      {
+        pathname,
+        title: "GraphQL RFC Activity",
+        description: "Chronological activity across tracked GraphQL RFCs.",
+      },
+    );
+  }
 }
 
 function HomePage({ data }: { data: SiteData }) {
@@ -366,11 +546,10 @@ function HomePage({ data }: { data: SiteData }) {
             href={`/activity/#meeting-${recording.meeting.group}-${recording.meeting.date}`}
           >
             <div className="home-recording-image">
-              <img
-                src={`https://i.ytimg.com/vi/${recording.details.videoId}/hq1.jpg`}
-                alt={`${groupName(recording.meeting.group)} meeting recording`}
-                width="480"
-                height="360"
+              <VideoStill
+                videoId={recording.details.videoId!}
+                title={`${groupName(recording.meeting.group)} meeting recording`}
+                rotate="auto"
               />
             </div>
             <span className="home-recording-caption">Latest WG recording</span>
@@ -608,14 +787,11 @@ function MeetingActivityCard({
         </div>
       </div>
       {details.videoId && (
-        <iframe
-          src={"https://www.youtube-nocookie.com/embed/" + details.videoId}
-          loading="lazy"
+        <VideoPreview
+          videoId={details.videoId}
           title={
             groupName(meeting.group) + " meeting recording, " + meeting.date
           }
-          allowFullScreen
-          referrerPolicy="strict-origin-when-cross-origin"
         />
       )}
     </Tag>
@@ -699,49 +875,84 @@ async function writeMeetings(meetings: Meeting[], today: string) {
       meta,
     );
   };
-  const links = [
-    { href: "/meetings/", name: "All groups" },
-    ...orderedMeetingGroups(meetings, today)
-      .filter((group) => meetings.some((meeting) => meeting.group === group))
-      .map((group) => ({
-        href: `/meetings/${group}/`,
-        name: groupName(group),
-      })),
-  ];
-  const archive = (pathname: string, title: string, entries: Meeting[]) => {
-    const months = new Map<string, Meeting[]>();
-    for (const meeting of [...entries].reverse()) {
-      const key = meeting.date.slice(0, 7);
-      const month = months.get(key) ?? [];
-      month.push(meeting);
-      months.set(key, month);
-    }
-    return write(
-      pathname,
-      title,
-      <section className="section-block meeting-archive">
-        <h1>{title}</h1>
-        <FilterLinks
-          label="Filter by working group"
-          current={pathname}
-          links={links}
+  const groups = orderedMeetingGroups(meetings, today).filter((group) =>
+    meetings.some((meeting) => meeting.group === group),
+  );
+  const archive = async (base: string, title: string, entries: Meeting[]) => {
+    const months = [
+      ...new Set(entries.map((meeting) => meeting.date.slice(0, 7))),
+    ]
+      .sort()
+      .reverse();
+    for (const period of [undefined, ...feedPeriods(months)]) {
+      const pathname = base + (period ? period + "/" : "");
+      const monthKeys = visibleMonths(months, today, period);
+      const links = [
+        {
+          href: archiveTarget(
+            "/meetings/",
+            period,
+            feedPeriods(meetings.map((meeting) => meeting.date.slice(0, 7))),
+          ),
+          name: "All groups",
+        },
+        ...groups.map((group) => ({
+          href: archiveTarget(
+            `/meetings/${group}/`,
+            period,
+            feedPeriods(
+              meetings
+                .filter((meeting) => meeting.group === group)
+                .map((meeting) => meeting.date.slice(0, 7)),
+            ),
+          ),
+          name: groupName(group),
+        })),
+      ];
+      const navigation = (
+        <FeedNavigation
+          base={base}
+          months={months}
+          today={today}
+          period={period}
         />
-        {[...months].map(([month, items]) => (
-          <section className="activity-month" key={month}>
-            <MonthHeading date={month} />
-            <ul className="activity-list">
-              {items.map((meeting) => (
-                <MeetingActivityCard
-                  meeting={meeting}
-                  key={meetingHref(meeting)}
-                />
-              ))}
-            </ul>
-          </section>
-        ))}
-        {!months.size && <p>No meetings to display.</p>}
-      </section>,
-    );
+      );
+      await write(
+        pathname,
+        title + (period ? " · " + period : ""),
+        <section
+          className="section-block meeting-archive"
+          data-feed-base={base}
+          data-feed-cutoff={recentMonth(today)}
+        >
+          <h1>{title}</h1>
+          <FilterLinks
+            label="Filter by working group"
+            current={pathname}
+            links={links}
+          />
+          {navigation}
+          {monthKeys.map((month) => (
+            <section className="activity-month" key={month}>
+              <MonthHeading date={month} />
+              <ul className="activity-list">
+                {[...entries]
+                  .reverse()
+                  .filter((meeting) => meeting.date.startsWith(month))
+                  .map((meeting) => (
+                    <MeetingActivityCard
+                      meeting={meeting}
+                      key={meetingHref(meeting)}
+                    />
+                  ))}
+              </ul>
+            </section>
+          ))}
+          {!monthKeys.length && <p>No meetings in this period.</p>}
+          {navigation}
+        </section>,
+      );
+    }
   };
   await archive("/meetings/", "Working group meetings", meetings);
   for (const group of groupIds) {
@@ -890,23 +1101,29 @@ function ProjectLinks({
   section,
   alias,
   filters,
+  period,
 }: {
   section: string;
   alias?: string;
   filters: ProjectFilter[];
+  period?: string;
 }) {
   const base = "/" + section + "/";
+  const suffix = period ? period + "/" : "";
   return (
     <FilterLinks
       label="Filter by project"
       links={[
-        { href: base, name: section === "rfcs" ? "All RFCs" : "All projects" },
+        {
+          href: base + suffix,
+          name: section === "rfcs" ? "All RFCs" : "All projects",
+        },
         ...filters.map((project) => ({
           name: project.name,
-          href: base + "projects/" + project.alias + "/",
+          href: base + "projects/" + project.alias + "/" + suffix,
         })),
       ]}
-      current={alias ? base + "projects/" + alias + "/" : base}
+      current={(alias ? base + "projects/" + alias + "/" : base) + suffix}
     />
   );
 }
@@ -915,38 +1132,53 @@ function ActivityPage({
   data,
   project,
   filters,
+  period,
 }: {
   data: SiteData;
   project?: ProjectFilter;
   filters: ProjectFilter[];
+  period?: string;
 }) {
   const meetings = data.meetings ?? [];
   const byHref = new Map(
     meetings.map((meeting) => [meetingHref(meeting), meeting]),
   );
   const activityGroups = groupActivityByMonth(data.activity);
-  const monthKeys = [
-    ...new Set([
-      ...activityGroups.map((month) => month.key),
-      ...meetings.map((meeting) => meeting.date.slice(0, 7)),
-    ]),
-  ]
-    .sort()
-    .reverse();
+  const months = activityMonths(data);
+  const monthKeys = visibleMonths(months, formatDate(data.generatedAt), period);
+  const base = project ? `/activity/projects/${project.alias}/` : "/activity/";
+  const navigation = (
+    <FeedNavigation
+      base={base}
+      months={months}
+      today={formatDate(data.generatedAt)}
+      period={period}
+    />
+  );
 
   return (
     <Layout
-      title="GraphQL RFC Activity"
+      title={`${project ? project.name + " · " : ""}GraphQL RFC Activity${period ? " · " + period : ""}`}
       description="Chronological activity across tracked GraphQL RFCs."
-      pathname={project ? `/activity/projects/${project.alias}/` : "/activity/"}
+      pathname={base + (period ? period + "/" : "")}
     >
-      <section className="section-block">
-        <h1>{project ? project.name + " · " : ""}Recent activity</h1>
+      <section
+        className="section-block"
+        data-feed-base={base}
+        data-feed-cutoff={recentMonth(formatDate(data.generatedAt))}
+      >
+        <h1>
+          {project ? project.name + " · " : ""}
+          {period ? "Activity" : "Recent activity"}
+        </h1>
         <ProjectLinks
           filters={filters}
           section="activity"
           alias={project?.alias}
+          period={period}
         />
+        {navigation}
+        {!monthKeys.length && <p>No activity in this period.</p>}
         <div className="activity-groups">
           {monthKeys.map((key) => {
             const month = activityGroups.find((group) => group.key === key);
@@ -995,6 +1227,7 @@ function ActivityPage({
             );
           })}
         </div>
+        {navigation}
       </section>
     </Layout>
   );
@@ -1136,14 +1369,11 @@ function MeetingNoteQuotes({
         })}
       </div>
       {videoId && (
-        <iframe
+        <VideoPreview
+          videoId={videoId}
           title={
             groupName(meeting.group) + " meeting recording, " + meeting.date
           }
-          src={"https://www.youtube-nocookie.com/embed/" + videoId}
-          loading="lazy"
-          allowFullScreen
-          referrerPolicy="strict-origin-when-cross-origin"
         />
       )}
     </div>
