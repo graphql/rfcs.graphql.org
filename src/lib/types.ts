@@ -14,7 +14,10 @@ export interface EventCore {
 }
 
 export interface EventBase extends EventCore {
+  group?: string;
   type:
+    | "issueCreated"
+    | "issueClosed"
     | "prCreated"
     | "prMerged"
     | "prClosed"
@@ -47,6 +50,8 @@ export interface RfcSummary {
   closedAt?: string;
   mergedAt?: string;
   mergedBy?: string;
+  project?: string;
+  issueUrl?: string;
   prUrl?: string;
   wgDiscussionUrl?: string;
   rfcDocUrl?: string;
@@ -59,6 +64,7 @@ export interface RfcSummary {
 }
 
 export interface ActivityEntry {
+  project?: string;
   identifier: string;
   title: string;
   shortname: string;
@@ -71,6 +77,7 @@ export interface SiteData {
   totalCount: number;
   rfcs: RfcSummary[];
   activity: ActivityEntry[];
+  meetings?: Meeting[];
 }
 
 export interface RfcFrontmatter {
@@ -82,6 +89,8 @@ export interface RfcFrontmatter {
   closedAt?: string;
   mergedAt?: string;
   mergedBy?: string;
+  project?: string;
+  issueUrl?: string;
   prUrl?: string;
   wgDiscussionUrl?: string;
   rfcDocUrl?: string;
@@ -90,4 +99,35 @@ export interface RfcFrontmatter {
   events: Event[];
   updatedAt: string;
   description: string;
+}
+
+export interface MeetingSource {
+  href: string;
+  content: string;
+  section?: string;
+}
+
+export interface NoteQuote {
+  start: number;
+  markdown: string;
+  section: string;
+  title?: string;
+  highlights: { start: number; end: number }[];
+}
+
+export interface Meeting {
+  youtubeVideoId?: string;
+  id: string;
+  group: string;
+  date: string;
+  cancelled: boolean;
+  agenda: MeetingSource;
+  agendaSummary?: { text: string; identifiers: string[] }[];
+  notes: MeetingSource[];
+  references: {
+    identifier: string;
+    agenda?: boolean;
+    section?: string;
+    quotes?: NoteQuote[];
+  }[];
 }

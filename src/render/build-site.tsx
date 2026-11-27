@@ -1,3 +1,6 @@
+import type { Nodes, Root, PhrasingContent } from "mdast";
+import { meetingDetails } from "./meeting-details.ts";
+import { projectFilters, projectName } from "../lib/projects.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
@@ -5,6 +8,8 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 import {
   formatDate,
   formatIdentifier,
@@ -12,7 +17,16 @@ import {
   stageWeight,
   summarizeEvent,
 } from "../lib/format.ts";
+import {
+  groupIds,
+  groupName,
+  meetingHref,
+  meetingStatus,
+} from "../lib/meetings.ts";
 import type {
+  Meeting,
+  MeetingSource,
+  NoteQuote,
   ActivityEntry,
   Event,
   RfcFrontmatter,
@@ -59,19 +73,66 @@ async function main(): Promise<void> {
     await fs.readFile(path.join(GENERATED_DIR, "site.json"), "utf8"),
   ) as SiteData;
 
+  const today = data.generatedAt.slice(0, 10);
+  data.meetings = (data.meetings ?? []).filter((meeting) => {
+    if (meeting.cancelled || meeting.date >= today) return false;
+    const details = meetingDetails(meeting);
+    return (details.attendees ?? 0) >= 2 && details.topics > 0;
+  });
+  const meetingUrls = new Set(data.meetings.map(meetingHref));
+  const visibleEvent = (event: Event) =>
+    (event.type !== "wgAgenda" && event.type !== "wgNotes") ||
+    meetingUrls.has(event.href.split("#")[0]);
+  data.activity = data.activity.filter((entry) => visibleEvent(entry.event));
+  for (const rfc of data.rfcs) rfc.events = rfc.events.filter(visibleEvent);
+
   await fs.rm(DIST_DIR, { recursive: true, force: true });
   await fs.mkdir(DIST_DIR, { recursive: true });
   await copyPublicDir();
 
-  await writePage(path.join(DIST_DIR, "index.html"), <HomePage data={data} />, {
-    title: "GraphQL RFC Tracker",
-    description: `Tracks ${data.totalCount} GraphQL RFCs across the spec and working group repos.`,
-    pathname: "/",
+  await writePage(
+    path.join(DIST_DIR, "rfcs", "open", "index.html"),
+    <OpenRfcsPage data={data} />,
+    {
+      title: "Open GraphQL RFCs",
+      description: `Tracks ${data.totalCount} GraphQL RFCs across the spec and working group repos.`,
+      pathname: "/rfcs/open/",
+    },
+  );
+
+  const projectPages = projectFilters.map((project) => {
+    const rfcs = data.rfcs.filter(
+      (rfc) => projectName(rfc.identifier) === project.name,
+    );
+    const identifiers = new Set(rfcs.map((rfc) => rfc.identifier));
+    const subset = {
+      ...data,
+      rfcs,
+      totalCount: rfcs.length,
+      activity: data.activity.filter((entry) =>
+        identifiers.has(entry.identifier),
+      ),
+      meetings: data.meetings?.filter(
+        (meeting) =>
+          meeting.group === project.meetingGroup ||
+          meeting.references.some((ref) => identifiers.has(ref.identifier)),
+      ),
+    };
+    return { project, subset };
   });
+  const availableSpecs = specFilters.filter((spec) =>
+    projectPages.some(
+      ({ project, subset }) =>
+        project.alias === spec.alias && subset.rfcs.length > 0,
+    ),
+  );
+  const activeProjects = projectPages
+    .filter(({ subset }) => subset.activity.length || subset.meetings?.length)
+    .map(({ project }) => project);
 
   await writePage(
     path.join(DIST_DIR, "rfcs", "index.html"),
-    <AllRfcsPage data={data} />,
+    <AllRfcsPage filters={availableSpecs} data={data} />,
     {
       title: "All GraphQL RFCs",
       description:
@@ -80,15 +141,51 @@ async function main(): Promise<void> {
     },
   );
 
-  await writePage(
-    path.join(DIST_DIR, "activity", "index.html"),
-    <ActivityPage data={data} />,
-    {
-      title: "GraphQL RFC Activity",
-      description: "Chronological activity across tracked GraphQL RFCs.",
-      pathname: "/activity/",
-    },
-  );
+  await writePage(path.join(DIST_DIR, "index.html"), <HomePage data={data} />, {
+    title: "GraphQL RFC Tracker",
+    description: "Follow GraphQL RFCs and working group meetings.",
+    pathname: "/",
+  });
+  const activityPeriods = feedPeriods(activityMonths(data));
+  await writeActivityPages(data, activeProjects, activityPeriods);
+
+  for (const { project, subset } of projectPages) {
+    for (const section of ["rfcs", "activity"] as const) {
+      const pathname = `/${section}/projects/${project.alias}/`;
+      // Keep previously published repository filter URLs pointing at the shared view.
+      const aliases = new Set([
+        project.alias,
+        ...project.sources.map((source) => source.alias),
+      ]);
+      for (const alias of aliases) {
+        if (section === "activity") {
+          await writeActivityPages(
+            subset,
+            activeProjects,
+            activityPeriods,
+            project,
+            alias,
+          );
+        } else {
+          await writePage(
+            path.join(DIST_DIR, section, "projects", alias, "index.html"),
+            <AllRfcsPage
+              filters={availableSpecs}
+              data={subset}
+              project={project}
+            />,
+            {
+              pathname,
+              title: project.name + " " + section,
+              description: "Tracked proposals for " + project.name,
+            },
+          );
+        }
+      }
+    }
+  }
+
+  await writeMeetings(data.meetings, today);
 
   await Promise.all(
     data.rfcs.map(async (summary) => {
@@ -99,6 +196,7 @@ async function main(): Promise<void> {
       const source = await fs.readFile(markdownPath, "utf8");
       const parsed = matter(source);
       const frontmatter = parsed.data as RfcFrontmatter;
+      frontmatter.events = frontmatter.events.filter(visibleEvent);
       await writePage(
         path.join(
           DIST_DIR,
@@ -106,7 +204,11 @@ async function main(): Promise<void> {
           assertSafeFilesystemComponent(summary.identifier),
           "index.html",
         ),
-        <RfcPage body={parsed.content} frontmatter={frontmatter} />,
+        <RfcPage
+          body={parsed.content}
+          frontmatter={frontmatter}
+          meetings={data.meetings ?? []}
+        />,
         {
           title: `${summary.title} | GraphQL RFC Tracker`,
           description: summary.description,
@@ -133,6 +235,15 @@ function Layout(props: {
     throw new Error(`pathname must start with "/"!`);
   }
   const canonicalUrl = `https://rfcs.graphql.org${props.pathname}`;
+  const navigation = [
+    { href: "/activity/", label: "Activity" },
+    { href: "/meetings/", label: "Meetings" },
+    { href: "/rfcs/open/", label: "Open RFCs" },
+    { href: "/rfcs/", label: "All RFCs" },
+  ];
+  const selected = navigation.find(({ href }) =>
+    props.pathname.startsWith(href),
+  )?.href;
   return (
     <html lang="en">
       <head>
@@ -143,6 +254,7 @@ function Layout(props: {
         <link rel="canonical" href={canonicalUrl} />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="stylesheet" href="/styles.css" />
+        <script src="/site.js" defer />
       </head>
       <body>
         <div className="page-shell">
@@ -151,11 +263,16 @@ function Layout(props: {
               <span className="brand-mark">GraphQL</span>{" "}
               <span className="brand-copy">RFC Tracker</span>
             </a>
-            <nav className="site-nav">
-              <a href="/rfcs/">All RFCs</a>
-              <a href="/activity/">Activity</a>
-              <a href="https://github.com/graphql/graphql-spec">graphql-spec</a>
-              <a href="https://github.com/graphql/graphql-wg">graphql-wg</a>
+            <nav className="site-nav" aria-label="Main navigation">
+              {navigation.map(({ href, label }) => (
+                <a
+                  key={href}
+                  href={href}
+                  aria-current={selected === href ? "page" : undefined}
+                >
+                  {label}
+                </a>
+              ))}
             </nav>
           </header>
           <main>{props.children}</main>
@@ -168,49 +285,390 @@ function Layout(props: {
   );
 }
 
+function MobileRfcList({ rfcs }: { rfcs: SiteData["rfcs"] }) {
+  return (
+    <div className="mobile-rfcs">
+      {rfcs.length ? (
+        <ul>
+          {rfcs.map((rfc) => (
+            <li key={rfc.identifier}>
+              <a className="mobile-rfc-title" href={`/rfcs/${rfc.identifier}/`}>
+                {rfc.title} <span>{formatIdentifier(rfc.identifier)}</span>
+              </a>
+              <div className="mobile-rfc-meta">
+                {projectName(rfc.identifier)} · {stageLabel(rfc.stage)}
+                {rfc.nextStage && <span className="badge">Next stage</span>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No tracked RFCs for this project.</p>
+      )}
+    </div>
+  );
+}
+
+function VideoStill({
+  videoId,
+  title,
+  rotate = "hover",
+}: {
+  videoId: string;
+  title: string;
+  rotate?: "hover" | "auto";
+}) {
+  return (
+    <span className="video-still" data-video-id={videoId} data-rotate={rotate}>
+      <img
+        src={`https://i.ytimg.com/vi/${videoId}/hq1.jpg`}
+        alt={title}
+        width="480"
+        height="360"
+        loading={rotate === "auto" ? "eager" : "lazy"}
+        decoding="async"
+      />
+    </span>
+  );
+}
+
+function VideoPreview({ videoId, title }: { videoId: string; title: string }) {
+  return (
+    <div className="video-preview-container">
+      <button
+        className="video-preview"
+        type="button"
+        data-load-video={videoId}
+        data-video-title={title}
+        aria-label={`Play ${title}`}
+      >
+        <VideoStill videoId={videoId} title={title} />
+        <span className="video-play" aria-hidden="true">
+          ▶
+        </span>
+      </button>
+      <noscript>
+        <a href={`https://www.youtube.com/watch?v=${videoId}`}>
+          Watch recording on YouTube
+        </a>
+      </noscript>
+    </div>
+  );
+}
+
+function archivePeriod(month: string) {
+  return month.slice(0, 4) + (Number(month.slice(5, 7)) <= 6 ? "H1" : "H2");
+}
+
+function recentMonth(today: string) {
+  const date = new Date(today.slice(0, 7) + "-01T00:00:00Z");
+  date.setUTCMonth(date.getUTCMonth() - 2);
+  return date.toISOString().slice(0, 7);
+}
+
+function feedPeriods(months: string[]) {
+  return [...new Set(months.map(archivePeriod))].sort().reverse();
+}
+
+function activityMonths(data: SiteData) {
+  return [
+    ...new Set([
+      ...data.activity.map(({ event }) => formatDate(event.date).slice(0, 7)),
+      ...(data.meetings ?? []).map((meeting) => meeting.date.slice(0, 7)),
+    ]),
+  ]
+    .sort()
+    .reverse();
+}
+
+function visibleMonths(months: string[], today: string, period?: string) {
+  return months.filter((month) =>
+    period
+      ? archivePeriod(month) === period
+      : month >= recentMonth(today) && month <= today.slice(0, 7),
+  );
+}
+
+function archiveTarget(
+  base: string,
+  period: string | undefined,
+  periods: string[],
+) {
+  const target =
+    period && (periods.find((entry) => entry <= period) ?? periods.at(-1));
+  return base + (target ? target + "/" : "");
+}
+
+function FeedNavigation({
+  base,
+  months,
+  today,
+  period,
+}: {
+  base: string;
+  months: string[];
+  today: string;
+  period?: string;
+}) {
+  const periods = feedPeriods(months);
+  const olderMonth = months.find((month) =>
+    period ? archivePeriod(month) < period : month < recentMonth(today),
+  );
+  const newerPeriod = period && periods[periods.indexOf(period) - 1];
+  const olderHref =
+    olderMonth &&
+    `${base}${archivePeriod(olderMonth)}/#${olderMonth.replace("-", "")}`;
+  return (
+    <nav className="feed-navigation" aria-label="Browse dates">
+      <div className="feed-period">
+        <span>
+          {period
+            ? period.slice(0, 4) + " " + period.slice(4)
+            : "Latest three months"}
+        </span>
+        {period && <a href={base}>Latest three months</a>}
+        {!!periods.length && (
+          <details>
+            <summary>Archive</summary>
+            <ul>
+              {periods.map((entry) => (
+                <li key={entry}>
+                  <a
+                    href={base + entry + "/"}
+                    aria-current={entry === period ? "page" : undefined}
+                  >
+                    {entry.slice(0, 4)} {entry.slice(4)}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+      <div className="feed-pagination">
+        {newerPeriod ? (
+          <a className="feed-newer" href={base + newerPeriod + "/"}>
+            ← Newer
+          </a>
+        ) : period ? (
+          <a className="feed-newer" href={base}>
+            ← Latest
+          </a>
+        ) : null}
+        {olderHref && (
+          <a className="feed-older" href={olderHref}>
+            Older →
+          </a>
+        )}
+      </div>
+    </nav>
+  );
+}
+
+async function writeActivityPages(
+  data: SiteData,
+  filters: ProjectFilter[],
+  periods: string[],
+  project?: ProjectFilter,
+  alias = project?.alias,
+) {
+  const base = alias ? `/activity/projects/${alias}/` : "/activity/";
+  for (const period of [undefined, ...periods]) {
+    const pathname = base + (period ? period + "/" : "");
+    await writePage(
+      path.join(DIST_DIR, pathname.slice(1), "index.html"),
+      <ActivityPage
+        data={data}
+        filters={filters}
+        project={project}
+        period={period}
+      />,
+      {
+        pathname,
+        title: "GraphQL RFC Activity",
+        description: "Chronological activity across tracked GraphQL RFCs.",
+      },
+    );
+  }
+}
+
 function HomePage({ data }: { data: SiteData }) {
+  const highlights = [...data.activity]
+    .sort((a, b) => Date.parse(b.event.date) - Date.parse(a.event.date))
+    .filter(
+      (entry, index, entries) =>
+        entries.findIndex((other) => other.identifier === entry.identifier) ===
+        index,
+    )
+    .slice(0, 3);
+  const recording = [...(data.meetings ?? [])]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((meeting) => ({ meeting, details: meetingDetails(meeting) }))
+    .find(({ details }) => details.videoId);
+  return (
+    <Layout
+      title="GraphQL RFC Tracker"
+      description="Follow GraphQL RFCs and working group meetings."
+      pathname="/"
+    >
+      <section className="home-feature section-block">
+        <div className="home-feature-copy">
+          <h1>What’s happening in GraphQL?</h1>
+          <a className="home-activity-link" href="/activity/">
+            Explore latest activity <span aria-hidden="true">→</span>
+          </a>
+          {highlights.length > 0 && (
+            <ul className="home-highlights" aria-label="Recent RFC activity">
+              {highlights.map((entry) => (
+                <li key={entry.identifier}>
+                  <span className="home-highlight-meta">
+                    {projectName(entry.identifier)} ·{" "}
+                    <time dateTime={formatDate(entry.event.date)}>
+                      {formatDate(entry.event.date)}
+                    </time>
+                  </span>
+                  <a
+                    href={`/activity/#${formatDate(entry.event.date).slice(0, 7).replace("-", "")}`}
+                  >
+                    {entry.title}
+                  </a>
+                  <p>
+                    <DateText text={summarizeEvent(entry.event)} />
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {recording && (
+          <a
+            className="home-recording"
+            href={`/activity/#meeting-${recording.meeting.group}-${recording.meeting.date}`}
+          >
+            <div className="home-recording-image">
+              <VideoStill
+                videoId={recording.details.videoId!}
+                title={`${groupName(recording.meeting.group)} meeting recording`}
+                rotate="auto"
+              />
+            </div>
+            <span className="home-recording-caption">Latest WG recording</span>
+            <strong>{groupName(recording.meeting.group)}</strong>
+            <time dateTime={recording.meeting.date}>
+              {recording.meeting.date}
+            </time>
+            {recording.meeting.agendaSummary?.[0] && (
+              <p>{recording.meeting.agendaSummary[0].text}</p>
+            )}
+            <span className="home-recording-action">View in activity →</span>
+          </a>
+        )}
+      </section>
+      <div className="home-destinations">
+        <section className="section-block">
+          <h2>
+            <a href="/meetings/">
+              Meetings <span aria-hidden="true">→</span>
+            </a>
+          </h2>
+          <nav aria-label="Working group meetings">
+            <ul className="home-wg-links">
+              {orderedMeetingGroups(
+                data.meetings ?? [],
+                formatDate(data.generatedAt),
+              )
+                .filter((group) =>
+                  data.meetings?.some((meeting) => meeting.group === group),
+                )
+                .map((group) => (
+                  <li key={group}>
+                    <a href={`/meetings/${group}/`}>{groupName(group)}</a>
+                  </li>
+                ))}
+            </ul>
+          </nav>
+        </section>
+        <section className="section-block">
+          <h2>RFCs</h2>
+          <nav className="home-rfc-links" aria-label="Browse RFCs">
+            <a href="/rfcs/open/">
+              Open RFCs <span aria-hidden="true">→</span>
+            </a>
+            <a href="/rfcs/">
+              All RFCs <span aria-hidden="true">→</span>
+            </a>
+          </nav>
+          <dl className="home-rfc-stats">
+            <div>
+              <dt>RFCs tracked</dt>
+              <dd>{data.totalCount}</dd>
+            </div>
+            <div>
+              <dt>Last updated</dt>
+              <dd>
+                <time dateTime={formatDate(data.generatedAt)}>
+                  {formatDate(data.generatedAt)}
+                </time>
+              </dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+    </Layout>
+  );
+}
+
+function MonthHeading({ date }: { date: string }) {
+  const month = formatDate(date).slice(0, 7);
+  const id = month.replace("-", "");
+  return (
+    <h2 className="activity-month-divider" id={id}>
+      <a href={`#${id}`}>
+        <span>{formatMonthLabel(month)}</span>
+      </a>
+    </h2>
+  );
+}
+
+function DateText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(\d{4}-\d{2}-\d{2})/).map((part, index) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(part) ? (
+          <time key={index} dateTime={part}>
+            {part}
+          </time>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
+function OpenRfcsPage({ data }: { data: SiteData }) {
   const openRfcs = data.rfcs
     .filter((rfc) => !rfc.mergedAt && !rfc.closedAt)
     .sort(compareRfcListEntries);
 
   return (
     <Layout
-      title="GraphQL RFC Tracker"
+      title="Open GraphQL RFCs"
       description={`Tracks ${data.totalCount} GraphQL RFCs across the spec and working group repos.`}
-      pathname="/"
+      pathname="/rfcs/open/"
     >
-      <section className="hero">
-        <p className="eyebrow">rfcs.graphql.org</p>
-        <h1>GraphQL RFC Tracker</h1>
-        <p className="lede">
-          Tracks commits, commentary, and stages. Interlinks based on
-          heuristics. Also fetches details of GraphQL Spec WG meetings to
-          determine when each RFC has been discussed, to allow looking up
-          discussions in the recordings.
-        </p>
-        <p>
-          Not the canonical source of information &mdash; please see the RFCs
-          themselves! This content is autogenerated based on heuristics.
-        </p>
-        <div className="hero-meta">
-          <div>
-            <span className="meta-label">RFCs tracked</span>
-            <strong>{data.totalCount}</strong>
-          </div>
-          <div>
-            <span className="meta-label">Last generated</span>
-            <strong>{formatDate(data.generatedAt)}</strong>
-          </div>
-        </div>
-      </section>
-
       <section className="section-block">
-        <div className="section-head">
-          <h2>Open RFCs</h2>
-          <a href="/activity/">View activity</a>
-        </div>
-        <div className="table-wrap">
+        <h1>Open RFCs</h1>
+        <MobileRfcList rfcs={openRfcs} />
+        <div className="table-wrap desktop-rfcs">
           <table className="rfc-table">
+            <colgroup>
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "14%" }} />
+              <col />
+              <col style={{ width: "20%" }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>RFC</th>
@@ -244,7 +702,9 @@ function HomePage({ data }: { data: SiteData }) {
                   <td>
                     <a href={`/rfcs/${rfc.identifier}/`}>{rfc.title}</a>
                   </td>
-                  <td>{latestSummary(rfc)}</td>
+                  <td>
+                    <DateText text={latestSummary(rfc)} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -255,33 +715,489 @@ function HomePage({ data }: { data: SiteData }) {
   );
 }
 
-function ActivityPage({ data }: { data: SiteData }) {
+function MeetingActivityCard({
+  meeting,
+  as: Tag = "li",
+}: {
+  meeting: Meeting;
+  as?: "li" | "div";
+}) {
+  const details = meetingDetails(meeting);
+  const href = meetingHref(meeting);
+  const note = meeting.notes[0];
+  const stats: string[] = [];
+  if (!meeting.cancelled) {
+    if (details.attendees !== undefined)
+      stats.push(
+        `${details.attendees} ${details.confirmed ? "attendee" : "listed attendee"}${details.attendees === 1 ? "" : "s"}`,
+      );
+    const topics = meeting.agendaSummary?.length ?? details.topics;
+    if (topics)
+      stats.push(`${topics} agenda ${topics === 1 ? "item" : "items"}`);
+    if (meeting.references.length)
+      stats.push(
+        `${meeting.references.length} linked RFC${meeting.references.length === 1 ? "" : "s"}`,
+      );
+  }
+  return (
+    <Tag
+      id={Tag === "li" ? `meeting-${meeting.group}-${meeting.date}` : undefined}
+      className={
+        details.videoId
+          ? "meeting-activity meeting-activity-video"
+          : "meeting-activity"
+      }
+    >
+      <div>
+        <div className="meeting-activity-heading">
+          <strong>
+            <a href={href}>{groupName(meeting.group)} meeting</a>
+          </strong>
+          <time dateTime={meeting.date}>{meeting.date}</time>
+        </div>
+        {stats.length > 0 && <p>{stats.join(" · ")}</p>}
+        {!!meeting.agendaSummary?.length && (
+          <ul className="meeting-agenda-summary" aria-label="Agenda summary">
+            {meeting.agendaSummary.map(({ text, identifiers }, index) => (
+              <li key={index}>
+                {text}
+                {identifiers.map((identifier) => (
+                  <React.Fragment key={identifier}>
+                    {" "}
+                    <a href={`/rfcs/${identifier}/`}>
+                      {formatIdentifier(identifier)}
+                    </a>
+                  </React.Fragment>
+                ))}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="meeting-activity-links">
+          {meeting.cancelled && <strong>Cancelled</strong>}
+          <a href={meeting.agenda.href}>Agenda</a>
+          {note ? (
+            <a href={note.section ? href + "#" + note.section : note.href}>
+              Notes
+            </a>
+          ) : (
+            !meeting.cancelled && <span>Notes pending</span>
+          )}
+          {details.video && <a href={details.video}>Video recording</a>}
+        </div>
+      </div>
+      {details.videoId && (
+        <VideoPreview
+          videoId={details.videoId}
+          title={
+            groupName(meeting.group) + " meeting recording, " + meeting.date
+          }
+        />
+      )}
+    </Tag>
+  );
+}
+
+function FilterLinks({
+  label,
+  links,
+  current,
+}: {
+  label: string;
+  links: { href: string; name: string }[];
+  current: string;
+}) {
+  return (
+    <nav className="filter-links" aria-label={label}>
+      {links.map(({ href, name }) => (
+        <a
+          key={href}
+          href={href}
+          aria-current={current === href ? "page" : undefined}
+        >
+          {name}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+function orderedMeetingGroups(meetings: Meeting[], today: string) {
+  const pinned = [
+    "graphql-wg",
+    "graphql-over-http",
+    "composite-schemas-wg",
+    "ai-wg",
+  ] as const;
+  // Clamp month-end dates to the last day of the target calendar month.
+  const date = new Date(today + "T00:00:00Z");
+  const cutoff = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 5, 0),
+  );
+  cutoff.setUTCDate(Math.min(date.getUTCDate(), cutoff.getUTCDate()));
+  const since = cutoff.toISOString().slice(0, 10);
+  const remaining = groupIds
+    .filter((group) => !pinned.some((id) => id === group))
+    .map((group) => {
+      const held = meetings.filter((meeting) => meeting.group === group);
+      return {
+        group,
+        recent: held.some((meeting) => meeting.date >= since),
+        count: held.length,
+      };
+    });
+  remaining.sort(
+    (a, b) =>
+      Number(b.recent) - Number(a.recent) ||
+      b.count - a.count ||
+      groupName(a.group).localeCompare(groupName(b.group)),
+  );
+  return [...pinned, ...remaining.map((entry) => entry.group)];
+}
+
+const meetingNavDate = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+async function writeMeetings(meetings: Meeting[], today: string) {
+  const write = (pathname: string, title: string, body: React.ReactNode) => {
+    const meta = { pathname, title, description: title };
+    return writePage(
+      path.join(
+        DIST_DIR,
+        assertSafeFilesystemPath(pathname.slice(1, -1)),
+        "index.html",
+      ),
+      <Layout {...meta}>{body}</Layout>,
+      meta,
+    );
+  };
+  const groups = orderedMeetingGroups(meetings, today).filter((group) =>
+    meetings.some((meeting) => meeting.group === group),
+  );
+  const archive = async (base: string, title: string, entries: Meeting[]) => {
+    const months = [
+      ...new Set(entries.map((meeting) => meeting.date.slice(0, 7))),
+    ]
+      .sort()
+      .reverse();
+    for (const period of [undefined, ...feedPeriods(months)]) {
+      const pathname = base + (period ? period + "/" : "");
+      const monthKeys = visibleMonths(months, today, period);
+      const links = [
+        {
+          href: archiveTarget(
+            "/meetings/",
+            period,
+            feedPeriods(meetings.map((meeting) => meeting.date.slice(0, 7))),
+          ),
+          name: "All groups",
+        },
+        ...groups.map((group) => ({
+          href: archiveTarget(
+            `/meetings/${group}/`,
+            period,
+            feedPeriods(
+              meetings
+                .filter((meeting) => meeting.group === group)
+                .map((meeting) => meeting.date.slice(0, 7)),
+            ),
+          ),
+          name: groupName(group),
+        })),
+      ];
+      const navigation = (
+        <FeedNavigation
+          base={base}
+          months={months}
+          today={today}
+          period={period}
+        />
+      );
+      await write(
+        pathname,
+        title + (period ? " · " + period : ""),
+        <section
+          className="section-block meeting-archive"
+          data-feed-base={base}
+          data-feed-cutoff={recentMonth(today)}
+        >
+          <h1>{title}</h1>
+          <FilterLinks
+            label="Filter by working group"
+            current={pathname}
+            links={links}
+          />
+          {navigation}
+          {monthKeys.map((month) => (
+            <section className="activity-month" key={month}>
+              <MonthHeading date={month} />
+              <ul className="activity-list">
+                {[...entries]
+                  .reverse()
+                  .filter((meeting) => meeting.date.startsWith(month))
+                  .map((meeting) => (
+                    <MeetingActivityCard
+                      meeting={meeting}
+                      key={meetingHref(meeting)}
+                    />
+                  ))}
+              </ul>
+            </section>
+          ))}
+          {!monthKeys.length && <p>No meetings in this period.</p>}
+          {navigation}
+        </section>,
+      );
+    }
+  };
+  await archive("/meetings/", "Working group meetings", meetings);
+  for (const group of groupIds) {
+    const groupHref = `/meetings/${group}/`;
+    const series = meetings.filter((meeting) => meeting.group === group);
+    await archive(groupHref, groupName(group) + " meetings", series);
+    for (const meeting of series) {
+      const neighbors = [
+        {
+          label: "« Previous in series",
+          entries: series,
+          offset: -1,
+          position: "previous-series",
+        },
+        {
+          label: "‹ Previous",
+          entries: meetings,
+          offset: -1,
+          position: "previous",
+        },
+        { label: "Next ›", entries: meetings, offset: 1, position: "next" },
+        {
+          label: "Next in series »",
+          entries: series,
+          offset: 1,
+          position: "next-series",
+        },
+      ] as const;
+      const navigation = (
+        <nav className="meeting-navigation" aria-label="Meeting navigation">
+          {neighbors.map(({ label, entries, offset, position }) => {
+            const target = entries[entries.indexOf(meeting) + offset];
+            if (!target) return null;
+            const name = groupName(target.group);
+            const date = meetingNavDate.format(new Date(target.date));
+            return (
+              <a className={position} href={meetingHref(target)} key={position}>
+                <span className="meeting-nav-direction">{label}</span>
+                <span className="meeting-nav-name">{name}</span>
+                <time dateTime={target.date}>{date}</time>
+              </a>
+            );
+          })}
+        </nav>
+      );
+      const title = groupName(group) + " · " + meeting.date;
+      await write(
+        meetingHref(meeting),
+        title,
+        <>
+          <header className="section-block">
+            <h1>
+              {groupName(group)} ·{" "}
+              <time dateTime={meeting.date}>{meeting.date}</time>
+            </h1>
+            <a href={groupHref}>{groupName(group)} meetings</a> ·{" "}
+            {meeting.notes.length ? (
+              <a href={`#${meeting.notes[0]!.section}`}>Jump to notes</a>
+            ) : (
+              meetingStatus(meeting)
+            )}
+          </header>
+          {navigation}
+          <MeetingDocument source={meeting.agenda} title="Agenda" />
+          {navigation}
+          {meeting.notes.length ? (
+            meeting.notes.map((note, index) => (
+              <MeetingDocument
+                key={note.section}
+                source={note}
+                title={
+                  note.href.includes("/summary-")
+                    ? "Zoom summary"
+                    : index === 0
+                      ? "Notes"
+                      : "Additional notes"
+                }
+              />
+            ))
+          ) : (
+            <section className="section-block">
+              <h2>Notes</h2>
+              <p>Notes pending</p>
+            </section>
+          )}
+          {navigation}
+          {meeting.references.length > 0 && (
+            <section className="section-block">
+              <h2>Tracked RFCs</h2>
+              <ul className="link-list">
+                {meeting.references.map(({ identifier, section }) => (
+                  <li key={identifier}>
+                    <a href={`/rfcs/${assertSafeURLComponent(identifier)}/`}>
+                      {formatIdentifier(identifier)}
+                    </a>
+                    {" · "}
+                    {section ? (
+                      <a href={`#${section}`}>Discussed</a>
+                    ) : (
+                      "On the agenda"
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </>,
+      );
+    }
+  }
+}
+
+function MeetingDocument({
+  source,
+  title,
+}: {
+  source: MeetingSource;
+  title: string;
+}) {
+  return (
+    <section className="section-block markdown-body" id={source.section}>
+      <h2>{title}</h2>
+      <p>
+        <a href={source.href}>View {title.toLowerCase()} on GitHub</a>
+      </p>
+      <div className="meeting-document-content">
+        <Markdown
+          content={source.content}
+          source={source}
+          agenda={title === "Agenda"}
+        />
+      </div>
+    </section>
+  );
+}
+
+const specFilters = [
+  { alias: "graphql", name: "GraphQL Spec" },
+  { alias: "http", name: "GraphQL over HTTP Spec" },
+  { alias: "compwg", name: "Federation Spec" },
+];
+
+type ProjectFilter = { alias: string; name: string };
+
+function ProjectLinks({
+  section,
+  alias,
+  filters,
+  period,
+}: {
+  section: string;
+  alias?: string;
+  filters: ProjectFilter[];
+  period?: string;
+}) {
+  const base = "/" + section + "/";
+  const suffix = period ? period + "/" : "";
+  return (
+    <FilterLinks
+      label="Filter by project"
+      links={[
+        {
+          href: base + suffix,
+          name: section === "rfcs" ? "All RFCs" : "All projects",
+        },
+        ...filters.map((project) => ({
+          name: project.name,
+          href: base + "projects/" + project.alias + "/" + suffix,
+        })),
+      ]}
+      current={(alias ? base + "projects/" + alias + "/" : base) + suffix}
+    />
+  );
+}
+
+function ActivityPage({
+  data,
+  project,
+  filters,
+  period,
+}: {
+  data: SiteData;
+  project?: ProjectFilter;
+  filters: ProjectFilter[];
+  period?: string;
+}) {
+  const meetings = data.meetings ?? [];
+  const byHref = new Map(
+    meetings.map((meeting) => [meetingHref(meeting), meeting]),
+  );
   const activityGroups = groupActivityByMonth(data.activity);
+  const months = activityMonths(data);
+  const monthKeys = visibleMonths(months, formatDate(data.generatedAt), period);
+  const base = project ? `/activity/projects/${project.alias}/` : "/activity/";
+  const navigation = (
+    <FeedNavigation
+      base={base}
+      months={months}
+      today={formatDate(data.generatedAt)}
+      period={period}
+    />
+  );
 
   return (
     <Layout
-      title="GraphQL RFC Activity"
+      title={`${project ? project.name + " · " : ""}GraphQL RFC Activity${period ? " · " + period : ""}`}
       description="Chronological activity across tracked GraphQL RFCs."
-      pathname="/activity/"
+      pathname={base + (period ? period + "/" : "")}
     >
-      <section className="hero hero-compact">
-        <p className="eyebrow">Cross-repo timeline</p>
-        <h1>Recent activity</h1>
-        <p className="lede">
-          A merged activity feed for spec PRs, RFC document history, and working
-          group mentions.
-        </p>
-      </section>
-      <section className="section-block">
+      <section
+        className="section-block"
+        data-feed-base={base}
+        data-feed-cutoff={recentMonth(formatDate(data.generatedAt))}
+      >
+        <h1>
+          {project ? project.name + " · " : ""}
+          {period ? "Activity" : "Recent activity"}
+        </h1>
+        <ProjectLinks
+          filters={filters}
+          section="activity"
+          alias={project?.alias}
+          period={period}
+        />
+        {navigation}
+        {!monthKeys.length && <p>No activity in this period.</p>}
         <div className="activity-groups">
-          {activityGroups.map((month) => (
-            <section className="activity-month" key={month.label}>
-              <div className="activity-month-divider">
-                <span>{month.label}</span>
-              </div>
-              <ul className="activity-list">
-                {month.rfcs.map((rfc) => (
-                  <li key={`${month.label}:${rfc.identifier}`}>
+          {monthKeys.map((key) => {
+            const month = activityGroups.find((group) => group.key === key);
+            const cards = [
+              ...meetings
+                .filter((meeting) => meeting.date.startsWith(key))
+                .map((meeting) => ({
+                  date: meeting.date,
+                  element: (
+                    <MeetingActivityCard
+                      key={meetingHref(meeting)}
+                      meeting={meeting}
+                    />
+                  ),
+                })),
+              ...(month?.rfcs ?? []).map((rfc) => ({
+                date: rfc.events[0].date,
+                element: (
+                  <li key={rfc.identifier}>
                     <article className="activity-card">
                       <div className="activity-card-top">
                         <a href={`/rfcs/${rfc.identifier}/`}>
@@ -291,53 +1207,72 @@ function ActivityPage({ data }: { data: SiteData }) {
                       </div>
                       <ul className="activity-events">
                         {rfc.events.map((event, index) => (
-                          <li
-                            key={`${rfc.identifier}:${event.type}:${event.date}:${index}`}
-                          >
-                            {renderActivityEvent(event)}
+                          <li key={`${event.type}:${event.date}:${index}`}>
+                            {renderActivityEvent(event, rfc.identifier, byHref)}
                           </li>
                         ))}
                       </ul>
                     </article>
                   </li>
-                ))}
-              </ul>
-            </section>
-          ))}
+                ),
+              })),
+            ].sort((a, b) => b.date.localeCompare(a.date));
+            return (
+              <section className="activity-month" key={key}>
+                <MonthHeading date={key} />
+                <ul className="activity-list">
+                  {cards.map(({ element }) => element)}
+                </ul>
+              </section>
+            );
+          })}
         </div>
+        {navigation}
       </section>
     </Layout>
   );
 }
 
-function AllRfcsPage({ data }: { data: SiteData }) {
+function AllRfcsPage({
+  data,
+  project,
+  filters,
+}: {
+  data: SiteData;
+  project?: ProjectFilter;
+  filters: ProjectFilter[];
+}) {
   const allRfcs = [...data.rfcs].sort(compareRfcListEntries);
 
+  const spec = specFilters.find((filter) => filter.alias === project?.alias);
+  const title = project ? (spec?.name ?? project.name) + " RFCs" : "All RFCs";
   return (
     <Layout
-      title="All GraphQL RFCs"
-      description="Complete listing of tracked GraphQL RFCs across all stages."
-      pathname="/rfcs/"
+      title={title}
+      description="Tracked GraphQL RFCs across all stages."
+      pathname={project ? `/rfcs/projects/${project.alias}/` : "/rfcs/"}
     >
-      <section className="hero hero-compact">
-        <p className="eyebrow">Complete index</p>
-        <h1>All RFCs</h1>
-        <p className="lede">
-          Full tracker view including open, merged, rejected, and superseded
-          RFCs.
-        </p>
-      </section>
-
       <section className="section-block">
         <div className="section-head">
-          <h2>All RFCs</h2>
-          <a href="/">View open RFCs</a>
+          <h1>{title}</h1>
+          <a href="/rfcs/open/">View open RFCs</a>
         </div>
-        <div className="table-wrap">
+        <ProjectLinks filters={filters} section="rfcs" alias={project?.alias} />
+        <MobileRfcList rfcs={allRfcs} />
+        <div className="table-wrap desktop-rfcs">
           <table className="rfc-table">
+            <colgroup>
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "12%" }} />
+              <col />
+              <col style={{ width: "20%" }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>RFC</th>
+                <th>Project</th>
                 <th>Stage</th>
                 <th>Champion</th>
                 <th>Title</th>
@@ -345,6 +1280,11 @@ function AllRfcsPage({ data }: { data: SiteData }) {
               </tr>
             </thead>
             <tbody>
+              {!allRfcs.length && (
+                <tr>
+                  <td colSpan={6}>No tracked RFCs for this project.</td>
+                </tr>
+              )}
               {allRfcs.map((rfc) => (
                 <tr key={rfc.identifier}>
                   <td>
@@ -355,6 +1295,7 @@ function AllRfcsPage({ data }: { data: SiteData }) {
                       <span className="badge">Next stage</span>
                     ) : null}
                   </td>
+                  <td>{projectName(rfc.identifier)}</td>
                   <td>{stageLabel(rfc.stage)}</td>
                   <td>
                     {rfc.champion ? (
@@ -368,7 +1309,9 @@ function AllRfcsPage({ data }: { data: SiteData }) {
                   <td>
                     <a href={`/rfcs/${rfc.identifier}/`}>{rfc.title}</a>
                   </td>
-                  <td>{latestSummary(rfc)}</td>
+                  <td>
+                    <DateText text={latestSummary(rfc)} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -379,12 +1322,157 @@ function AllRfcsPage({ data }: { data: SiteData }) {
   );
 }
 
-function RfcPage(props: { frontmatter: RfcFrontmatter; body: string }) {
-  const { frontmatter, body } = props;
+function MeetingNoteQuotes({
+  meeting,
+  identifier,
+}: {
+  meeting: Meeting;
+  identifier: string;
+}) {
+  const quotes = meeting.references.find(
+    (ref) => ref.identifier === identifier,
+  )?.quotes;
+  if (!quotes?.length) return null;
+  const { videoId } = meetingDetails(meeting);
+  const href = meetingHref(meeting);
+  return (
+    <div
+      className={videoId ? "meeting-quotes with-recording" : "meeting-quotes"}
+    >
+      <div>
+        {quotes.map((quote, index) => {
+          const note = meeting.notes.find(
+            (note) =>
+              quote.section === note.section ||
+              quote.section.startsWith(note.section + "-"),
+          );
+          const label = note?.href.includes("/summary-")
+            ? "Zoom summary"
+            : "Meeting notes";
+          return (
+            <blockquote key={index} className="meeting-quote">
+              {quote.title && (
+                <div className="quote-heading">{quote.title}</div>
+              )}
+              <Markdown
+                content={quote.markdown}
+                highlights={quote.highlights}
+                source={note && { href: note.href, content: quote.markdown }}
+              />
+              <cite>
+                <a href={href + "#" + quote.section}>
+                  {label} · {groupName(meeting.group)} · {meeting.date}
+                </a>
+              </cite>
+            </blockquote>
+          );
+        })}
+      </div>
+      {videoId && (
+        <VideoPreview
+          videoId={videoId}
+          title={
+            groupName(meeting.group) + " meeting recording, " + meeting.date
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+function RfcOverview({ rfc }: { rfc: RfcFrontmatter }) {
+  const sources = [
+    ["Issue", rfc.issueUrl],
+    ["Pull request", rfc.prUrl],
+    ["RFC document", rfc.rfcDocUrl],
+    ["WG discussion", rfc.wgDiscussionUrl],
+  ] as const;
+  return (
+    <section className="section-block rfc-overview">
+      <h2>At a glance</h2>
+      <div className="rfc-overview-columns">
+        <dl>
+          <dt>Project</dt>
+          <dd>{projectName(rfc.identifier)}</dd>
+          <dt>Identifier</dt>
+          <dd>{formatIdentifier(rfc.identifier)}</dd>
+          <dt>Stage</dt>
+          <dd>{stageLabel(rfc.stage)}</dd>
+          <dt>Champion</dt>
+          <dd>
+            {rfc.champion ? (
+              <a href={`https://github.com/${rfc.champion}`}>@{rfc.champion}</a>
+            ) : (
+              "—"
+            )}
+          </dd>
+        </dl>
+        <dl>
+          <dt>Updated</dt>
+          <dd>{formatDate(rfc.updatedAt)}</dd>
+          {rfc.events[0] && (
+            <>
+              <dt>Latest activity</dt>
+              <dd>
+                <DateText text={summarizeEvent(rfc.events[0])} />
+              </dd>
+            </>
+          )}
+          {sources.some(([, href]) => href) && (
+            <>
+              <dt>Source</dt>
+              <dd className="rfc-overview-links">
+                {sources.map(
+                  ([label, href]) =>
+                    href && (
+                      <a key={label} href={href}>
+                        {label}
+                      </a>
+                    ),
+                )}
+              </dd>
+            </>
+          )}
+          {!!rfc.related?.length && (
+            <>
+              <dt>Related RFCs</dt>
+              <dd className="rfc-overview-links">
+                {rfc.related.map((id) => (
+                  <a key={id} href={`/rfcs/${id}/`}>
+                    {formatIdentifier(id)}
+                  </a>
+                ))}
+              </dd>
+            </>
+          )}
+        </dl>
+      </div>
+    </section>
+  );
+}
+
+function RfcPage(props: {
+  frontmatter: RfcFrontmatter;
+  meetings: Meeting[];
+  body: string;
+}) {
+  const { frontmatter, body, meetings } = props;
   const openedOn = getOpenedOn(frontmatter.events);
   const secondaryDate = getSecondaryDate(frontmatter);
-  const contentBody = stripGeneratedTimeline(stripLeadingTitle(body));
-  const timelineMonths = groupEventsByMonth(frontmatter.events);
+  const descriptions = rfcDescriptions(body);
+  const byHref = new Map(
+    meetings.map((meeting) => [meetingHref(meeting), meeting]),
+  );
+  const discussed = new Set(
+    frontmatter.events
+      .filter((event) => event.type === "wgNotes")
+      .map((event) => event.href.split("#")[0]),
+  );
+  const timelineMonths = groupEventsByMonth(
+    frontmatter.events.filter(
+      (event) => event.type !== "wgAgenda" || !discussed.has(event.href),
+    ),
+  );
 
   return (
     <Layout
@@ -398,85 +1486,45 @@ function RfcPage(props: { frontmatter: RfcFrontmatter; body: string }) {
         <div className="hero-meta">
           <div>
             <span className="meta-label">Opened on</span>
-            <strong>{openedOn}</strong>
+            <strong>
+              <time dateTime={openedOn}>{openedOn}</time>
+            </strong>
           </div>
           <div>
             <span className="meta-label">{secondaryDate.label}</span>
-            <strong>{secondaryDate.value}</strong>
+            <strong>
+              <time dateTime={secondaryDate.value}>{secondaryDate.value}</time>
+            </strong>
           </div>
         </div>
       </section>
 
-      <section className="section-grid">
-        <aside className="summary-card">
-          <h2>Summary</h2>
-          <dl className="meta-grid">
-            <dt>Identifier</dt>
-            <dd>{formatIdentifier(frontmatter.identifier)}</dd>
-            <dt>Stage</dt>
-            <dd>{stageLabel(frontmatter.stage)}</dd>
-            <dt>Champion</dt>
-            <dd>
-              {frontmatter.champion ? (
-                <a href={`https://github.com/${frontmatter.champion}`}>
-                  @{frontmatter.champion}
-                </a>
-              ) : (
-                "-"
-              )}
-            </dd>
-            <dt>Updated</dt>
-            <dd>{formatDate(frontmatter.updatedAt)}</dd>
-          </dl>
-          <ul className="link-list">
-            {frontmatter.prUrl ? (
-              <li>
-                <a href={frontmatter.prUrl}>Spec PR</a>
-              </li>
-            ) : null}
-            {frontmatter.rfcDocUrl ? (
-              <li>
-                <a href={frontmatter.rfcDocUrl}>RFC document</a>
-              </li>
-            ) : null}
-            {frontmatter.wgDiscussionUrl ? (
-              <li>
-                <a href={frontmatter.wgDiscussionUrl}>WG discussion</a>
-              </li>
-            ) : null}
-          </ul>
-          {frontmatter.related && frontmatter.related.length > 0 ? (
-            <>
-              <h3>Related</h3>
-              <ul className="link-list">
-                {frontmatter.related.map((related) => (
-                  <li key={related}>
-                    <a href={`/rfcs/${related}/`}>
-                      {formatIdentifier(related)}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-        </aside>
-
-        <article className="markdown-body">
-          <Markdown content={contentBody} />
-          <section className="detail-timeline">
+      <article className="rfc-detail">
+        <RfcOverview rfc={frontmatter} />
+        {descriptions.map(({ title, content }, index) => (
+          <section className="markdown-body rfc-description" key={index}>
+            <h2>{title}</h2>
+            <Markdown content={content} />
+          </section>
+        ))}
+        {timelineMonths.length > 0 && (
+          <section className="section-block detail-timeline">
             <h2>Timeline</h2>
             <div className="activity-groups detail-timeline-groups">
               {timelineMonths.map((month) => (
                 <section className="activity-month" key={month.label}>
-                  <div className="activity-month-divider">
-                    <span>{month.label}</span>
-                  </div>
+                  <MonthHeading date={month.events[0]!.date} />
                   <ul className="detail-timeline-list">
                     {month.events.map((event, index) => (
                       <li
                         key={`${month.label}:${event.type}:${event.date}:${index}`}
                       >
-                        {renderActivityEvent(event)}
+                        {renderActivityEvent(
+                          event,
+                          frontmatter.identifier,
+                          byHref,
+                          true,
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -484,8 +1532,8 @@ function RfcPage(props: { frontmatter: RfcFrontmatter; body: string }) {
               ))}
             </div>
           </section>
-        </article>
-      </section>
+        )}
+      </article>
     </Layout>
   );
 }
@@ -508,13 +1556,137 @@ function NotFoundPage() {
   );
 }
 
-function Markdown({ content }: { content: string }) {
+function hideMarkdownComments(node: Nodes) {
+  if (node.type === "html")
+    node.value = node.value.replace(/<!--[\s\S]*?(?:-->|$)/g, "");
+  else if ("children" in node) node.children.forEach(hideMarkdownComments);
+}
+
+function emphasizeNotes(node: Nodes, ranges: NoteQuote["highlights"]) {
+  if (!("children" in node)) return;
+  for (let i = node.children.length - 1; i >= 0; i--) {
+    const child = node.children[i];
+    if (child.type !== "text" && child.type !== "inlineCode") {
+      emphasizeNotes(child, ranges);
+      continue;
+    }
+    const start = child.position?.start.offset,
+      end = child.position?.end.offset;
+    if (start === undefined || end === undefined) continue;
+    const hits = ranges.filter(
+      (range) => range.end > start && range.start < end,
+    );
+    if (!hits.length) continue;
+    if (
+      child.type === "inlineCode" ||
+      hits.some((range) => range.start <= start && range.end >= end)
+    ) {
+      node.children.splice(i, 1, { type: "strong", children: [child] });
+      continue;
+    }
+    const boundaries = [
+      ...new Set([
+        0,
+        child.value.length,
+        ...hits
+          .flatMap((hit) => [hit.start - start, hit.end - start])
+          .filter((n) => n > 0 && n < child.value.length),
+      ]),
+    ].sort((a, b) => a - b);
+    const parts: PhrasingContent[] = boundaries.slice(1).map((end, j) => {
+      const offset = boundaries[j],
+        text = { type: "text" as const, value: child.value.slice(offset, end) };
+      return hits.some(
+        (hit) => hit.start <= start + offset && hit.end > start + offset,
+      )
+        ? { type: "strong", children: [text] }
+        : text;
+    });
+    node.children.splice(i, 1, ...parts);
+  }
+}
+
+function Markdown({
+  content,
+  source,
+  agenda,
+  highlights,
+}: {
+  content: string;
+  source?: MeetingSource;
+  agenda?: boolean;
+  highlights?: NoteQuote["highlights"];
+}) {
+  const resolve = (url: string | undefined, image = false) => {
+    if (
+      !source ||
+      !url ||
+      url.startsWith("#") ||
+      /^[a-z][a-z0-9+.-]*:/i.test(url) ||
+      url.startsWith("//")
+    )
+      return normalizeHref(url);
+    const base = new URL(source.href);
+    const repo = base.pathname.split("/").slice(0, 5).join("/");
+    const resolved = url.startsWith("/")
+      ? new URL(repo + url, base)
+      : new URL(url, base);
+    if (image) resolved.pathname = resolved.pathname.replace("/blob/", "/raw/");
+    return resolved.href;
+  };
+  const headingComponent =
+    (tag: `h${1 | 2 | 3 | 4 | 5 | 6}`) =>
+    ({
+      children,
+      node,
+    }: React.PropsWithChildren<{
+      node?: { position?: { start: { line: number } } };
+    }>) =>
+      React.createElement(
+        tag,
+        {
+          id:
+            source?.section && node?.position
+              ? `${source.section}-${node.position.start.line}`
+              : undefined,
+        },
+        children,
+      );
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[
+        remarkGfm,
+        () => (tree: Root) => {
+          hideMarkdownComments(tree);
+          if (highlights) emphasizeNotes(tree, highlights);
+          if (agenda) {
+            const first = tree.children.findIndex(
+              (node) => node.type === "heading" && node.depth === 1,
+            );
+            if (first > 0)
+              tree.children = tree.children.filter(
+                (node, index) => index >= first || node.type === "definition",
+              );
+          }
+        },
+      ]}
       components={{
+        ...(source && {
+          h1: headingComponent("h1"),
+          h2: headingComponent("h2"),
+          h3: headingComponent("h3"),
+          h4: headingComponent("h4"),
+          h5: headingComponent("h5"),
+          h6: headingComponent("h6"),
+          table: ({ children }) => (
+            <div className="table-wrap">
+              <table>{children}</table>
+            </div>
+          ),
+          img: ({ src, alt }) => <img src={resolve(src, true)} alt={alt} />,
+        }),
         a: ({ href, children, node: _node, ...props }) => (
-          <a href={normalizeHref(href)} {...props}>
+          <a href={resolve(href)} {...props}>
             {children}
           </a>
         ),
@@ -535,22 +1707,55 @@ function normalizeHref(href: string | undefined): string | undefined {
   return href;
 }
 
-function stripLeadingTitle(content: string): string {
-  return content.replace(/^# [^\n]+\n+/m, "");
-}
-
-function stripGeneratedTimeline(content: string): string {
-  return content.replace(/\n## Timeline[\s\S]*$/m, "").trimEnd();
+// Split only at the tracker's generated headings; subheadings and fenced
+// examples inside source Markdown belong to their description.
+function rfcDescriptions(body: string) {
+  const sections: { title: string; content: string }[] = [];
+  const headings = unified()
+    .use(remarkParse)
+    .parse(body)
+    .children.filter((node) => node.type === "heading" && node.depth === 2);
+  const names = new Set([
+    "RFC document",
+    "Issue description",
+    "Pull request description",
+    "Spec PR description",
+    "WG discussion",
+  ]);
+  const timeline = headings.findLast(
+    (node) =>
+      body.slice(node.position!.start.offset, node.position!.end.offset) ===
+      "## Timeline",
+  );
+  let end = timeline?.position?.start.offset ?? body.length;
+  for (const node of headings.reverse()) {
+    const start = node.position!.start.offset!;
+    if (start >= end) continue;
+    const title = body
+      .slice(start, node.position!.end.offset)
+      .replace(/^##\s+/, "");
+    if (!names.has(title)) continue;
+    const content = body.slice(node.position!.end.offset, end).trim();
+    if (content.replace(/<!--[\s\S]*?-->/g, "").trim())
+      sections.unshift({ title, content });
+    end = start;
+  }
+  return sections;
 }
 
 function eventSentence(event: Event): string {
   if (event.type === "commitsPushed") {
-    return `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"} pushed on ${formatDate(event.date)}.`;
+    return `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"} pushed on $<time dateTime={formatDate(event.date)}>{formatDate(event.date)}</time>.`;
   }
   return `${summarizeEvent(event)}.`;
 }
 
-function renderActivityEvent(event: Event): React.ReactNode {
+function renderActivityEvent(
+  event: Event,
+  identifier: string,
+  meetings: Map<string, Meeting>,
+  showMeetingCard = false,
+): React.ReactNode {
   if (event.type === "commitsPushed") {
     if (event.commits.length === 1) {
       const commit = event.commits[0];
@@ -560,7 +1765,9 @@ function renderActivityEvent(event: Event): React.ReactNode {
             ? `@${commit.ghUser}`
             : (commit.authorName ?? "Someone")}{" "}
           committed "<a href={commit.href}>{commit.headline}</a>" on{" "}
-          {formatDate(event.date)}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>
         </>
       );
     }
@@ -568,7 +1775,7 @@ function renderActivityEvent(event: Event): React.ReactNode {
     return (
       <>
         <a href={event.href}>{event.commits.length} commits pushed</a> on{" "}
-        {formatDate(event.date)}
+        <time dateTime={formatDate(event.date)}>{formatDate(event.date)}</time>
         <ul className="activity-event-commits">
           {event.commits.map((commit) => (
             <li key={commit.href}>
@@ -584,37 +1791,55 @@ function renderActivityEvent(event: Event): React.ReactNode {
   }
 
   switch (event.type) {
+    case "issueCreated":
+    case "issueClosed":
+      return <a href={event.href}>{summarizeEvent(event)}</a>;
     case "prCreated":
       return (
         <>
-          <a href={event.href}>Spec PR</a> created on {formatDate(event.date)}{" "}
+          <a href={event.href}>Pull request</a> created on{" "}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
           by {event.actor ?? "unknown"}
         </>
       );
     case "prMerged":
       return (
         <>
-          <a href={event.href}>Spec PR</a> merged on {formatDate(event.date)} by{" "}
-          {event.actor ?? "unknown"}
+          <a href={event.href}>Pull request</a> merged on{" "}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "prClosed":
       return (
         <>
-          <a href={event.href}>Spec PR</a> closed on {formatDate(event.date)}
+          <a href={event.href}>Pull request</a> closed on{" "}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>
         </>
       );
     case "topCommentEdited":
       return (
         <>
           <a href={event.href}>Top comment</a> edited on{" "}
-          {formatDate(event.date)} by {event.actor ?? "unknown"}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "statusChanged":
       return (
         <>
-          <a href={event.href}>{event.summary}</a> on {formatDate(event.date)}
+          <a href={event.href}>{event.summary}</a> on{" "}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>
           {event.actor ? ` by ${event.actor}` : ""}
         </>
       );
@@ -622,37 +1847,61 @@ function renderActivityEvent(event: Event): React.ReactNode {
       return (
         <>
           <a href={event.href}>RFC document</a> created on{" "}
-          {formatDate(event.date)} by {event.actor ?? "unknown"}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "docUpdated":
       return (
         <>
           <a href={event.href}>RFC document</a> updated on{" "}
-          {formatDate(event.date)} by {event.actor ?? "unknown"}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "wgDiscussionCreated":
       return (
         <>
           <a href={event.href}>WG discussion</a> created on{" "}
-          {formatDate(event.date)} by {event.actor ?? "unknown"}
+          <time dateTime={formatDate(event.date)}>
+            {formatDate(event.date)}
+          </time>{" "}
+          by {event.actor ?? "unknown"}
         </>
       );
     case "wgAgenda":
+    case "wgNotes": {
+      const meeting = meetings.get(event.href.split("#")[0]);
+      const discussed = event.type === "wgNotes";
+      const hasQuotes =
+        discussed &&
+        meeting?.references.some(
+          (ref) => ref.identifier === identifier && ref.quotes?.length,
+        );
       return (
         <>
-          Added to <a href={event.href}>WG agenda</a> on{" "}
-          {formatDate(event.date)}
+          {discussed ? "Discussed in " : "On the agenda for "}
+          <a href={event.href}>
+            <time dateTime={formatDate(event.date)}>
+              {formatDate(event.date)}
+            </time>{" "}
+            {groupName(meeting?.group ?? event.group ?? "WG")}
+          </a>
+          {meeting &&
+            (hasQuotes ? (
+              <MeetingNoteQuotes meeting={meeting} identifier={identifier} />
+            ) : (
+              showMeetingCard && (
+                <MeetingActivityCard as="div" meeting={meeting} />
+              )
+            ))}
         </>
       );
-    case "wgNotes":
-      return (
-        <>
-          Mentioned in <a href={event.href}>WG notes</a> on{" "}
-          {formatDate(event.date)}
-        </>
-      );
+    }
   }
 }
 
@@ -671,7 +1920,7 @@ function groupActivityByMonth(activity: ActivityEntry[]) {
   >();
 
   for (const entry of activity) {
-    const monthLabel = formatMonthLabel(formatDate(entry.event.date));
+    const monthLabel = formatDate(entry.event.date).slice(0, 7);
     const month = months.get(monthLabel) ?? new Map();
     months.set(monthLabel, month);
 
@@ -685,8 +1934,8 @@ function groupActivityByMonth(activity: ActivityEntry[]) {
     month.set(entry.identifier, rfc);
   }
 
-  return [...months.entries()].map(([label, days]) => ({
-    label,
+  return [...months.entries()].map(([key, days]) => ({
+    key,
     rfcs: [...days.values()]
       .map((rfc) => ({
         ...rfc,
@@ -765,7 +2014,11 @@ function getLatestActivityTimestamp(rfc: { events: Event[] }): number {
 }
 
 function compareRfcListEntries(
-  left: { stage: RfcFrontmatter["stage"]; nextStage?: boolean; events: Event[] },
+  left: {
+    stage: RfcFrontmatter["stage"];
+    nextStage?: boolean;
+    events: Event[];
+  },
   right: {
     stage: RfcFrontmatter["stage"];
     nextStage?: boolean;

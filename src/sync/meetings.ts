@@ -1,0 +1,362 @@
+import { noteQuotes } from "./note-quotes.ts";
+import { normalizeGithubReferences } from "../lib/github.ts";
+import type { Nodes, Root } from "mdast";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import remarkParse from "remark-parse";
+import remarkGfm from "remark-gfm";
+import { unified } from "unified";
+import { groupIds, meetingPaths, type WorkingGroup } from "../lib/meetings.ts";
+import type { Meeting, MeetingSource } from "../lib/types.ts";
+import {
+  getAgendaDate,
+  getAgendaPathDay,
+  looksLikeItMightHaveBeenCancelled,
+} from "./agenda-metadata.ts";
+
+const markdown = unified().use(remarkParse).use(remarkGfm);
+const githubLink = /https:\/\/github\.com\/[^\s<>"[`\]()]+/gi;
+const fullDate = /\b\d{4}-\d{2}-\d{2}\b/;
+
+function validDate(value: string | undefined): string | undefined {
+  if (!value || !fullDate.test(value)) return;
+  const parsed = new Date(value);
+  if (!Number.isNaN(+parsed) && parsed.toISOString().slice(0, 10) === value)
+    return value;
+}
+
+function links(content: string): string[] {
+  return [...content.matchAll(githubLink)].map(([href]) =>
+    href.replace(/[.,;:]+$/, ""),
+  );
+}
+
+function linkKey(href: string): string {
+  return normalizeGithubReferences(href)
+    .split(/[?#]/)[0]
+    .replace(/\/$/, "")
+    .toLowerCase()
+    .replace(/\/blob\/(?:main|master|[0-9a-f]{40})\//, "/blob/main/")
+    .replace(
+      /\/(?:pull|issues|discussions)\/(\d+)\/(?:files|commits).*$/,
+      "/pull/$1",
+    );
+}
+
+async function sourceFiles(
+  root: string,
+  directory: string,
+  group: string,
+): Promise<MeetingSource[]> {
+  const base = path.join(root, directory);
+  const entries = await readdir(base, {
+    recursive: true,
+    withFileTypes: true,
+  }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const files = entries
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        /\.md$/i.test(entry.name) &&
+        !/^(readme|(?:agenda[-_])?[-_]?template)\.md$/i.test(entry.name),
+    )
+    .map((entry) => path.join(entry.parentPath, entry.name))
+    .sort();
+  return Promise.all(
+    files.map(async (file) => ({
+      href: `https://github.com/graphql/${group}/blob/main/${path.relative(root, file).split(path.sep).map(encodeURIComponent).join("/")}`,
+      content: await readFile(file, "utf8"),
+    })),
+  );
+}
+
+function agendaDate(source: MeetingSource): string | undefined {
+  const file = decodeURIComponent(source.href.split("/agendas/").at(-1)!);
+  return (
+    getAgendaPathDay(file)?.toISOString().slice(0, 10) ??
+    validDate(fullDate.exec(path.basename(file))?.[0]) ??
+    getAgendaDate(source.content)?.toISOString().slice(0, 10)
+  );
+}
+
+function noteParts(
+  source: MeetingSource,
+): { source: MeetingSource; date?: string; month?: string }[] {
+  const filename = decodeURIComponent(source.href.split("/").at(-1)!);
+  const date = fullDate.exec(filename)?.[0];
+  if (date) return [{ source, date }];
+  const month = /\b\d{4}-\d{2}\b/.exec(filename)?.[0];
+  const headings = markdown.parse(source.content).children.flatMap((node) => {
+    if (node.type !== "heading" || !node.position) return [];
+    const label = source.content.slice(
+      node.position.start.offset,
+      node.position.end.offset,
+    );
+    const date = fullDate.exec(label)?.[0];
+    return date ? [{ date, start: node.position.start.offset! }] : [];
+  });
+  if (!headings.length) return [{ source, month }];
+  const intro = source.content.slice(0, headings[0].start);
+  return headings.map(({ date, start }, index) => ({
+    source: {
+      ...source,
+      content: intro + source.content.slice(start, headings[index + 1]?.start),
+    },
+    date,
+    month,
+  }));
+}
+
+function nodeLinks(
+  node: object,
+  definitions: boolean,
+  references?: Map<string, string>,
+): string[] {
+  const type = "type" in node ? node.type : undefined;
+  if (
+    type === "linkReference" &&
+    "identifier" in node &&
+    typeof node.identifier === "string"
+  ) {
+    const href = references?.get(node.identifier);
+    return href ? [href] : [];
+  }
+  if (type === "code" || type === "inlineCode" || type === "html") return [];
+  if (
+    "url" in node &&
+    typeof node.url === "string" &&
+    (type === "link" || (definitions && type === "definition"))
+  )
+    return [node.url];
+  if ("value" in node && type === "text" && typeof node.value === "string")
+    return links(node.value);
+  return "children" in node && Array.isArray(node.children)
+    ? node.children.flatMap((child: object) =>
+        nodeLinks(child, definitions, references),
+      )
+    : [];
+}
+
+function plainText(node: Nodes): string {
+  if (node.type === "list" || node.type === "html") return "";
+  if (node.type === "image" || node.type === "imageReference")
+    return node.alt ?? "";
+  if (node.type === "break") return " ";
+  if ("value" in node) return node.value;
+  return "children" in node
+    ? node.children.map(plainText).join(node.type === "listItem" ? " " : "")
+    : "";
+}
+
+function agendaSummary(
+  tree: Root,
+  match: (urls: string[]) => string[],
+  known: Set<string>,
+) {
+  const definitions = new Map(
+    tree.children.flatMap((node) =>
+      node.type === "definition" ? [[node.identifier, node.url] as const] : [],
+    ),
+  );
+  const summary: NonNullable<Meeting["agendaSummary"]> = [];
+  let agendaDepth = 0;
+  for (const node of tree.children) {
+    if (node.type === "heading") {
+      if (/^(?:agenda|agenda items|topics):?$/i.test(plainText(node).trim()))
+        agendaDepth = node.depth;
+      else if (node.depth <= agendaDepth) agendaDepth = 0;
+    }
+    if (!agendaDepth || node.type !== "list") continue;
+    for (const item of node.children) {
+      const text = plainText(item).replace(/\s+/g, " ").trim();
+      if (!text || /\(\d+m, Host\)$/.test(text)) continue;
+      const identifiers = new Set(match(nodeLinks(item, false, definitions)));
+      for (const ref of text.matchAll(/\bRFC\s+#([0-9]+)\b/gi))
+        if (known.has(ref[1])) identifiers.add(ref[1]);
+      summary.push({ text, identifiers: [...identifiers] });
+    }
+  }
+  return summary;
+}
+
+type RfcSource = {
+  identifier: string;
+  issueUrl?: string;
+  prUrl?: string;
+  wgDiscussionUrl?: string;
+  rfcDocUrl?: string;
+};
+
+export async function collectMeetings(
+  checkout: (group: WorkingGroup) => string,
+  records: Iterable<RfcSource>,
+): Promise<Meeting[]> {
+  const identifiers = new Map<string, Set<string>>();
+  const known = new Set<string>();
+  for (const record of records) {
+    known.add(record.identifier);
+    for (const href of [
+      `https://rfcs.graphql.org/rfcs/${record.identifier}/`,
+      `/rfcs/${record.identifier}/`,
+      record.issueUrl,
+      record.prUrl,
+      record.wgDiscussionUrl,
+      record.rfcDocUrl,
+    ]) {
+      if (!href) continue;
+      const key = linkKey(href);
+      const matches = identifiers.get(key) ?? new Set();
+      matches.add(record.identifier);
+      identifiers.set(key, matches);
+    }
+  }
+  const match = (urls: string[]) =>
+    urls.flatMap((href) => {
+      const identifier = identifiers.get(linkKey(href));
+      return identifier ? [...identifier] : [];
+    });
+
+  const groups = await Promise.all(
+    groupIds.map(async (group) => {
+      const paths = meetingPaths(group);
+      const [agendas, notes] = await Promise.all([
+        sourceFiles(checkout(group), paths.agendas, group),
+        sourceFiles(checkout(group), paths.notes, group),
+      ]);
+      const meetings: Meeting[] = [];
+      const byAgenda = new Map<string, Meeting>();
+      for (const agenda of agendas) {
+        const date = agendaDate(agenda);
+        if (!date) {
+          console.warn(`No meeting date for ${agenda.href}`);
+          continue;
+        }
+        const id = meetings.some((meeting) => meeting.date === date)
+          ? `${date}-${decodeURIComponent(agenda.href.split("/").at(-1)!)
+              .replace(/\.md$/i, "")
+              .replace(/[^\w.-]/g, "-")}`
+          : date;
+        const tree = markdown.parse(agenda.content);
+        const summary = agendaSummary(tree, match, known);
+        const meeting: Meeting = {
+          id,
+          date,
+          group,
+          agenda,
+          agendaSummary: summary,
+          notes: [],
+          cancelled: looksLikeItMightHaveBeenCancelled(agenda.content),
+          references: [
+            ...new Set([
+              ...match(nodeLinks(tree, true)),
+              ...summary.flatMap((item) => item.identifiers),
+            ]),
+          ].map((identifier) => ({ identifier, agenda: true })),
+        };
+        meetings.push(meeting);
+        byAgenda.set(linkKey(agenda.href), meeting);
+      }
+      for (const note of notes) {
+        for (const part of noteParts(note)) {
+          const agendaDeclarations = part.source.content.matchAll(
+            /^(?:[-*] )?(?:\*\*)?(?:\[Agenda\]\([^\n]+|Agenda(?:\*\*)?:[^\n]*(?:\n[^\n]+)?)/gim,
+          );
+          const agendaLinks = [...agendaDeclarations].flatMap(([declaration]) =>
+            links(declaration),
+          );
+          const linked = [
+            ...new Set(
+              agendaLinks.flatMap((href) => {
+                const meeting = byAgenda.get(linkKey(href));
+                return meeting ? [meeting] : [];
+              }),
+            ),
+          ];
+          const candidates = linked.length
+            ? linked
+            : meetings.filter((meeting) =>
+                part.date
+                  ? meeting.date === part.date
+                  : !meeting.cancelled &&
+                    part.month &&
+                    meeting.date.startsWith(part.month),
+              );
+          if (candidates.length === 1) candidates[0].notes.push(part.source);
+          else
+            console.warn(
+              `Unresolved notes ${note.href}${part.date ? ` (${part.date})` : ""}`,
+            );
+        }
+      }
+      for (const meeting of meetings) {
+        meeting.notes.sort(
+          (a, b) =>
+            Number(a.href.includes("/summary-")) -
+            Number(b.href.includes("/summary-")),
+        );
+        const references = new Map(
+          meeting.references.map((ref) => [ref.identifier, ref]),
+        );
+        meeting.notes.forEach((note, index) => {
+          note.section = `notes-${index + 1}`;
+          if (meeting.cancelled) return;
+          const quotes = noteQuotes(
+            note.content,
+            note.section,
+            (text) => markdown.parse(text),
+            match,
+            (node) => nodeLinks(node, false),
+          );
+          for (const [identifier, excerpts] of quotes) {
+            const previous = references.get(identifier);
+            references.set(identifier, {
+              ...previous,
+              identifier,
+              section: previous?.section ?? excerpts[0].section,
+              quotes: [...(previous?.quotes ?? []), ...excerpts],
+            });
+          }
+          let section = note.section;
+          let excludedDepth = 7;
+          for (const node of markdown.parse(note.content).children) {
+            if (node.type === "heading") {
+              section = `${note.section}-${node.position!.start.line}`;
+              if (node.depth <= excludedDepth) {
+                const title = note.content.slice(
+                  node.position?.start.offset,
+                  node.position?.end.offset,
+                );
+                excludedDepth =
+                  /\b(next steps|action items|follow[- ]ups)\b/i.test(title)
+                    ? node.depth
+                    : 7;
+              }
+            }
+            if (excludedDepth < 7) continue;
+            for (const identifier of match(nodeLinks(node, false))) {
+              if (!references.get(identifier)?.section)
+                references.set(identifier, {
+                  ...references.get(identifier),
+                  identifier,
+                  section,
+                });
+            }
+          }
+        });
+        meeting.references = [...references.values()];
+      }
+      return meetings;
+    }),
+  );
+  return groups
+    .flat()
+    .sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        a.group.localeCompare(b.group) ||
+        a.id.localeCompare(b.id),
+    );
+}

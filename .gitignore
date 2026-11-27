@@ -1,3 +1,10 @@
+.yarn/*
+!.yarn/releases
+!.yarn/releases/*
+!.yarn/plugins
+!.yarn/plugins/*
+!.yarn/patches
+!.yarn/patches/*
 benjie.dev/
 build/
 dist/

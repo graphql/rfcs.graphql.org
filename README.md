@@ -3,23 +3,49 @@
 
 # rfcs.graphql.org
 
-RFC tracker for GraphQL. Gathers together RFCs from:
+Project issues, pull requests, and discussions enter the tracker when they carry
+an explicit `RFC` label or an RFC stage label such as `💡 Proposal (RFC 1)`.
+The core GraphQL WG also retains its historical Ideas discussions and RFC documents.
+It covers the main GraphQL specification and working group, GraphQL over HTTP,
+AI WG, Composite Schemas WG, Federation Spec, GraphiQL, GraphQL.js and its WG,
+Golden Path, and GAPs. Source documents supplement proposal histories. Meetings
+link to proposals independently of discovery.
 
-- graphql-spec issues
-- graphql-spec PRs
-- graphql-wg rfcs/ folder
+For the core WG, sync reads the working tree at `~/Dev/graphql/graphql-wg` when
+available, including locally annotated notes. Otherwise it uses its managed
+checkout. Paired markers such as `<!--BEGIN[graphql/graphql-spec#1211]-->` and
+`<!--END[graphql/graphql-spec#1211]-->` identify passages for a tracked RFC.
 
-Tracks commits, commentary, and stages. Interlinks based on heuristics. Also
-fetches details of GraphQL Spec WG meetings to determine when each RFC has been
-discussed, to allow looking up discussions in the recordings.
+Core spec PRs use bare numeric routes such as `/rfcs/42/`. Other projects use
+their repository alias, such as `/rfcs/js-42/` or `/rfcs/jswg-42/`.
+The RFC index and activity feed group repositories by working group. GraphQL.js
+and its WG share one filter, as do Composite Schemas WG and Federation Spec.
+
+## Project RFC documents
+
+Edit `documentOrigins` in [the project configuration](src/lib/projects.ts) to
+attach documents to tracked proposals.
+
+1. To enable a tracked project, add its repository name with an empty object,
+   e.g. `"graphql-federation-spec": {}`. The sync scans Markdown and PDF files
+   directly under `rfcs/`, skipping README and template files.
+2. By default, the sync looks up the commit that added each file and uses its
+   associated PR number. If GitHub returns zero or multiple PRs, the sync logs
+   `Review origin of …` and skips that file. To resolve the warning, or correct
+   an inferred origin, check the proposal and add its number under the exact
+   filename. For example, `"Batching.md": 40` under `graphql-over-http`
+   attaches the document to `http-40`. Each document in a repository must
+   point to a distinct proposal.
+3. Run `yarn sync-rfcs` with `GITHUB_TOKEN` set and check the proposal’s
+   `rfcDocUrl` in `generated/site.json`. The proposal must already be tracked
+   for the sync to attach the document.
 
 ## Repo setup
 
 This repo does two separate jobs:
 
 1. `yarn sync-rfcs`
-   Fetches RFC-related data from GitHub and from a local checkout of
-   `graphql/graphql-wg`, then writes plain markdown and JSON into `generated/`.
+   Fetches RFC-related data from GitHub and from local project and meeting checkouts, then writes plain markdown and JSON into `generated/`.
 
 2. `yarn build-site`
    Reads only the generated markdown and JSON, renders it through a markdown
@@ -47,6 +73,11 @@ this repository.
 - `yarn build`
 
 `yarn build` runs the full pipeline and produces a deployable `dist/`.
+
+## Local preview
+
+Run `yarn build-site && yarn serve`, then open <http://127.0.0.1:8000>.
+`yarn serve` uses Python 3's built-in HTTP server to serve `dist/`.
 
 ## Output
 
