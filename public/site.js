@@ -25,7 +25,6 @@
   followArchiveFragment();
   window.addEventListener("hashchange", followArchiveFragment);
 
-  const motion = matchMedia("(prefers-reduced-motion: reduce)");
   const hover = matchMedia("(hover: hover)");
   const previews = new Map();
 
@@ -42,8 +41,36 @@
     };
     previews.set(still, state);
 
+    let overlay;
+    let animation;
+    function displayFrame(src) {
+      if (!overlay) {
+        overlay = document.createElement("img");
+        overlay.className = "video-frame-overlay";
+        overlay.alt = "";
+        overlay.setAttribute("aria-hidden", "true");
+        still.append(overlay);
+      }
+      if (animation) {
+        image.src = overlay.src;
+        animation.cancel();
+      }
+      overlay.src = src;
+      const fade = overlay.animate([{ opacity: 0 }, { opacity: 1 }], {
+        duration: 250,
+        easing: "ease-in-out",
+        fill: "forwards",
+      });
+      animation = fade;
+      fade.onfinish = () => {
+        image.src = src;
+        fade.cancel();
+        if (animation === fade) animation = null;
+      };
+    }
+
     function advance(version, repeat) {
-      const frame = state.frame === 1 ? 3 : 1;
+      const frame = (state.frame % 3) + 1;
       const src =
         "https://i.ytimg.com/vi/" +
         still.dataset.videoId +
@@ -54,7 +81,7 @@
       next.onload = () => {
         if (!still.isConnected || state.version !== version) return;
         state.frame = frame;
-        image.src = src;
+        displayFrame(src);
         if (repeat) {
           state.timer = setTimeout(
             () => advance(version, repeat),
@@ -71,9 +98,7 @@
       const version = ++state.version;
       if (document.hidden || !state.visible) return;
       if (automatic) {
-        if (!motion.matches) {
-          state.timer = setTimeout(() => advance(version, true), 3500);
-        }
+        state.timer = setTimeout(() => advance(version, true), 3500);
       } else if (state.hovered) {
         advance(version, true);
       }
@@ -110,7 +135,6 @@
     previews.forEach((state) => state.update());
   }
   document.addEventListener("visibilitychange", updatePreviews);
-  motion.addEventListener("change", updatePreviews);
 
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-load-video]");

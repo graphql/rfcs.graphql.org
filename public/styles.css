@@ -684,7 +684,7 @@ time { white-space: nowrap; }
 }
 
 .video-preview-container { min-width: 0; width: 100%; }
-.video-still { display: block; width: 100%; height: 100%; aspect-ratio: 16 / 9; overflow: hidden; }
+.video-still { position: relative; display: block; width: 100%; height: 100%; aspect-ratio: 16 / 9; overflow: hidden; }
 .video-still img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .video-preview {
   display: block;
@@ -754,3 +754,5 @@ time { white-space: nowrap; }
   .feed-pagination { width: 100%; }
   .feed-period details ul { left: 0; right: auto; }
 }
+
+.video-still .video-frame-overlay { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
