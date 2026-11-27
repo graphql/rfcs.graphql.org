@@ -262,6 +262,7 @@ interface SyncState {
       events: CachedIssueEvent[];
     }
   >;
+  documentStageOverrides?: Record<string, Stage>;
 }
 
 interface CachedIssueEvent {
@@ -340,7 +341,7 @@ async function main(): Promise<void> {
   for (const discussion of await fetchAllDiscussions(token)) {
     mergeDiscussion(records, discussion);
   }
-  await mergeDocuments(records);
+  await mergeDocuments(records, state);
   await addWgMentions(records);
 
   const summaries = await writeGeneratedMarkdown(records);
@@ -377,11 +378,9 @@ async function main(): Promise<void> {
 async function loadState(): Promise<SyncState> {
   try {
     const state = JSON.parse(await fs.readFile(STATE_PATH, "utf8")) as SyncState;
-    if (!state.issueEvents || typeof state.issueEvents !== "object") {
-      return {};
-    }
-    return {
-      issueEvents: Object.fromEntries(
+    const result: SyncState = {};
+    if (state.issueEvents && typeof state.issueEvents === "object") {
+      result.issueEvents = Object.fromEntries(
         Object.entries(state.issueEvents).flatMap(([key, value]) => {
           if (!value || typeof value !== "object" || !Array.isArray(value.events)) {
             return [];
@@ -389,8 +388,12 @@ async function loadState(): Promise<SyncState> {
           const events = value.events.filter(isCachedIssueEvent);
           return [[key, { updatedAt: value.updatedAt ?? "", events }]];
         }),
-      ),
-    };
+      );
+    }
+    if (state.documentStageOverrides && typeof state.documentStageOverrides === "object") {
+      result.documentStageOverrides = state.documentStageOverrides;
+    }
+    return result;
   } catch {
     return {};
   }
@@ -1010,7 +1013,7 @@ function mergeDiscussion(
   });
 }
 
-async function mergeDocuments(records: Map<string, RfcRecord>): Promise<void> {
+async function mergeDocuments(records: Map<string, RfcRecord>, state: SyncState): Promise<void> {
   const docsDir = path.join(WG_DIR, "rfcs");
   for (const entry of await fs.readdir(docsDir, { withFileTypes: true })) {
     if (
@@ -1028,7 +1031,7 @@ async function mergeDocuments(records: Map<string, RfcRecord>): Promise<void> {
     const record = getOrCreateRecord(records, identifier, tidyTitle(header));
     record.title = tidyTitle(header);
     record.shortname = record.title;
-    record.stage = record.stage ?? "0";
+    record.stage = record.stage ?? state.documentStageOverrides?.[identifier] ?? "0";
     record.rfcDocUrl = `https://github.com/graphql/graphql-wg/blob/main/rfcs/${entry.name}`;
     record.documentBody = pruneMarkdown(content);
     record.updatedAt = maxDate(record.updatedAt, new Date().toISOString());

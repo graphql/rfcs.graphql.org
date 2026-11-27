@@ -1,4 +1,7 @@
 {
+  "documentStageOverrides": {
+    "MockSpec": "S"
+  },
   "issueEvents": {
     "graphql/graphql-spec#1010": {
       "events": [
